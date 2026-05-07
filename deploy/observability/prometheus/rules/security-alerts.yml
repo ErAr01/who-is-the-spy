@@ -1,0 +1,214 @@
+# Prometheus Alerting Rules для мониторинга безопасности
+# 📚 Что здесь происходит:
+# Эти правила отслеживают подозрительную активность и потенциальные атаки
+# на observability-стек. Алерты срабатывают при обнаружении аномалий
+# и отправляют уведомления через Alertmanager (если настроен).
+
+groups:
+  - name: security_alerts
+    interval: 1m
+    rules:
+      # =================================================================
+      # Redis Security — Мониторинг несанкционированного доступа к Redis
+      # =================================================================
+      
+      # 📚 Алерт срабатывает при резком росте подключений к Redis.
+      # Normal behavior: 2-5 постоянных подключений от бота и Prometheus exporter.
+      # Anomaly: 10+ подключений могут указывать на:
+      # - Атаку на Redis (brute-force, сканирование портов)
+      # - Утечку REDIS_PASSWORD и использование злоумышленником
+      # - Ошибку в коде бота (connection leak)
+      - alert: RedisConnectionSpike
+        expr: redis_connected_clients > 10
+        for: 2m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Подозрительная активность Redis — резкий рост подключений"
+          description: |
+            Обнаружено {{ $value }} одновременных подключений к Redis (норма: 2-5).
+            Возможные причины:
+            - Атака на Redis (если порт 6379 доступен публично)
+            - Утечка REDIS_PASSWORD
+            - Connection leak в коде бота
+            
+            Действия:
+            1. Проверить список подключений: docker exec who-is-the-spy-redis redis-cli -a "${REDIS_PASSWORD}" CLIENT LIST
+            2. Проверить биндинг порта: sudo netstat -tulpn | grep 6379
+            3. Если атака — ротация пароля: sudo bash scripts/rotate-passwords.sh redis
+
+      # 📚 Мониторинг отклоненных подключений к Redis.
+      # Если Redis настроен с maxclients или requirepass,
+      # неуспешные попытки подключения логируются в этой метрике.
+      - alert: RedisRejectedConnections
+        expr: rate(redis_rejected_connections_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis отклоняет подключения"
+          description: |
+            {{ $value }} отклоненных подключений за последние 5 минут.
+            Возможные причины:
+            - Достигнут maxclients (по умолчанию 10000)
+            - Неправильный пароль (brute-force попытки)
+            - Сетевые проблемы
+            
+            Проверьте: docker compose logs redis
+
+      # 📚 Мониторинг использования памяти Redis.
+      # Атака через FLUSHALL или массовая запись данных может привести
+      # к исчерпанию памяти и падению Redis.
+      - alert: RedisHighMemoryUsage
+        expr: (redis_memory_used_bytes / redis_memory_max_bytes) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis использует более 90% выделенной памяти"
+          description: |
+            Использование памяти: {{ $value | humanizePercentage }}
+            
+            Возможные причины:
+            - Нормальный рост данных (много активных игровых сессий)
+            - Атака через массовую запись ключей
+            - Memory leak в коде бота
+            
+            Проверьте:
+            1. Количество ключей: docker exec who-is-the-spy-redis redis-cli -a "${REDIS_PASSWORD}" DBSIZE
+            2. Top keys по размеру: docker exec who-is-the-spy-redis redis-cli -a "${REDIS_PASSWORD}" --bigkeys
+
+      # =================================================================
+      # Grafana Security — Мониторинг неуспешных попыток аутентификации
+      # =================================================================
+      
+      # 📚 Алерт срабатывает при множественных неуспешных попытках входа в Grafana.
+      # Это может быть:
+      # - Brute-force атака на пароль admin
+      # - Забытый пароль сотрудником (безобидно)
+      # - Автоматизированное сканирование ботами
+      - alert: GrafanaHighFailedLogins
+        expr: rate(grafana_api_failure_total{handler=~".*/login"}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          component: grafana
+        annotations:
+          summary: "Множественные неуспешные попытки входа в Grafana"
+          description: |
+            Обнаружено {{ $value }} неудачных попыток входа в минуту.
+            
+            Действия:
+            1. Проверить логи: docker compose logs grafana | grep -i "auth\|login"
+            2. Если brute-force — заблокировать IP через UFW или Fail2Ban
+            3. Рассмотреть ротацию пароля: sudo bash scripts/rotate-passwords.sh grafana
+
+      # =================================================================
+      # Container Security — Мониторинг перезапусков контейнеров
+      # =================================================================
+      
+      # 📚 Частые перезапуски контейнера могут указывать на:
+      # - Атаку через уязвимость (container escape attempt)
+      # - OOM killer (нехватка памяти)
+      # - Критическую ошибку в коде
+      - alert: ContainerRestartingFrequently
+        expr: rate(container_restart_count[15m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: docker
+        annotations:
+          summary: "Контейнер {{ $labels.name }} часто перезапускается"
+          description: |
+            Контейнер перезапустился {{ $value }} раз за последние 15 минут.
+            
+            Проверьте:
+            1. Логи: docker compose logs {{ $labels.name }}
+            2. Использование ресурсов: docker stats {{ $labels.name }}
+            3. OOM killer: dmesg | grep -i "out of memory"
+
+      # =================================================================
+      # Prometheus Security — Мониторинг аномальной активности
+      # =================================================================
+      
+      # 📚 Prometheus query rate — мониторинг интенсивности запросов.
+      # Резкий рост может указывать на:
+      # - DoS атаку через тяжелые PromQL запросы
+      # - Ошибку в коде (бесконечный цикл запросов)
+      - alert: PrometheusHighQueryRate
+        expr: rate(prometheus_http_requests_total{handler="/api/v1/query"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: prometheus
+        annotations:
+          summary: "Prometheus — аномально высокая интенсивность запросов"
+          description: |
+            Обнаружено {{ $value }} запросов/сек к Prometheus API.
+            
+            Возможные причины:
+            - DoS атака через тяжелые PromQL запросы
+            - Ошибка в дашборде Grafana (auto-refresh с коротким интервалом)
+            - Бот в бесконечном цикле запросов метрик
+            
+            Проверьте:
+            1. Последние запросы: docker compose logs prometheus | grep "query"
+            2. Grafana дашборды (отключите auto-refresh на время)
+
+      # 📚 Prometheus scrape errors — мониторинг ошибок сбора метрик.
+      # Если target внезапно становится недоступным, это может быть:
+      # - Атака на бота (crashed из-за уязвимости)
+      # - Сетевая проблема
+      # - Контейнер остановлен вручную злоумышленником
+      - alert: PrometheusScrapeErrors
+        expr: up{job="bot"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: bot
+        annotations:
+          summary: "Prometheus не может собрать метрики с бота"
+          description: |
+            Target {{ $labels.instance }} (job={{ $labels.job }}) недоступен более 2 минут.
+            
+            Проверьте:
+            1. Статус контейнера: docker compose ps bot
+            2. Логи бота: docker compose logs --tail 200 bot
+            3. Метрики endpoint: curl http://bot:8001/metrics
+
+      # =================================================================
+      # Loki Security — Мониторинг подозрительной активности в логах
+      # =================================================================
+      
+      # 📚 Высокая частота записи логов может указывать на:
+      # - Атаку через log injection (переполнение диска)
+      # - Ошибку в коде (infinite loop с логированием)
+      - alert: LokiHighIngestionRate
+        expr: rate(loki_distributor_bytes_received_total[5m]) > 10485760  # 10MB/s
+        for: 5m
+        labels:
+          severity: warning
+          component: loki
+        annotations:
+          summary: "Loki — аномально высокая скорость приема логов"
+          description: |
+            Loki получает {{ $value | humanize }}B/s логов (норма: <1MB/s).
+            
+            Возможные причины:
+            - Log injection атака (попытка переполнить диск)
+            - Бот в infinite loop с логированием ошибок
+            
+            Проверьте:
+            1. Последние логи: docker compose logs --tail 200 bot
+            2. Использование диска: df -h
+            3. Размер Loki volume: docker system df -v
+
+# ⚠️ Важно знать:
+# 1. Эти правила требуют настроенного Alertmanager для отправки уведомлений
+# 2. Для интеграции с Telegram/Email/Slack создайте alertmanager.yml
+# 3. Пороговые значения (thresholds) подобраны для одного Telegram-бота
+#    с нагрузкой до 100 активных пользователей одновременно
+# 4. Для высоконагруженных систем увеличьте пороги (например, redis_connected_clients > 50)

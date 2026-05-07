@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: who-is-the-spy
+    orgId: 1
+    folder: Who Is The Spy
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: false

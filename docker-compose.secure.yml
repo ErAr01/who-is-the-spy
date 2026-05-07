@@ -1,0 +1,194 @@
+# Безопасная конфигурация docker-compose для продакшен-развертывания
+# Использование: docker compose -f docker-compose.secure.yml --profile observability up -d
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: who-is-the-spy-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "127.0.0.1:6379:6379"  # 🔒 Локальный биндинг — доступ только с сервера
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: who-is-the-spy-bot:latest
+    container_name: who-is-the-spy-bot
+    env_file:
+      - .env
+    environment:
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      METRICS_HOST: ${METRICS_HOST:-0.0.0.0}
+      METRICS_PORT: ${METRICS_PORT:-8001}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/metrics', timeout=5).read(1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: who-is-the-spy-prometheus
+    profiles:
+      - observability
+    user: "65534:65534"  # nobody:nogroup для минимизации привилегий
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-lifecycle"  # Для перезагрузки конфига без рестарта
+    volumes:
+      - ./deploy/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/observability/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - bot
+      - loki
+    ports:
+      - "127.0.0.1:9090:9090"  # 🔒 Локальный биндинг
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: who-is-the-spy-loki
+    profiles:
+      - observability
+    user: "10001:10001"  # Непривилегированный пользователь
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./deploy/observability/loki/loki-config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"  # 🔒 Локальный биндинг
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: who-is-the-spy-promtail
+    profiles:
+      - observability
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./deploy/observability/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail-positions:/tmp/positions
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.5
+    container_name: who-is-the-spy-grafana
+    profiles:
+      - observability
+    user: "472:472"  # Дефолтный непривилегированный пользователь Grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_COOKIE_SAMESITE: "strict"
+      GF_USERS_ALLOW_SIGN_UP: "false"  # 🔒 Запретить регистрацию новых пользователей
+      GF_AUTH_ANONYMOUS_ENABLED: "false"  # 🔒 Запретить анонимный доступ
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./deploy/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./deploy/observability/grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
+    depends_on:
+      - prometheus
+      - loki
+    ports:
+      - "127.0.0.1:3000:3000"  # 🔒 Локальный биндинг
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Опционально: Nginx Reverse Proxy с SSL (для Варианта Б)
+  # Раскомментируйте этот блок для использования Nginx
+  # nginx:
+  #   image: nginx:1.27-alpine
+  #   container_name: who-is-the-spy-nginx
+  #   profiles:
+  #     - observability
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./deploy/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+  #     - ./deploy/nginx/ssl:/etc/nginx/ssl:ro
+  #     - certbot-webroot:/var/www/certbot:ro
+  #   depends_on:
+  #     - grafana
+  #     - prometheus
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--spider", "-q", "http://localhost/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+
+  # certbot:
+  #   image: certbot/certbot:v3.0.1
+  #   profiles:
+  #     - observability
+  #   volumes:
+  #     - ./deploy/nginx/ssl:/etc/letsencrypt
+  #     - certbot-webroot:/var/www/certbot
+  #   entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done"
+
+volumes:
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  loki-data:
+    driver: local
+  promtail-positions:
+    driver: local
+  grafana-data:
+    driver: local
+  # certbot-webroot:
+  #   driver: local
+
+# 📋 Чеклист перед запуском:
+# 1. Создайте .env с REDIS_PASSWORD и GRAFANA_ADMIN_PASSWORD
+# 2. Убедитесь, что UFW настроен (sudo ufw status)
+# 3. Выполните: docker compose -f docker-compose.secure.yml --profile observability up -d
+# 4. Проверьте: curl http://localhost:3000 (должно работать на сервере)
+# 5. Проверьте: curl http://<PUBLIC_IP>:3000 (должно отваливаться извне)

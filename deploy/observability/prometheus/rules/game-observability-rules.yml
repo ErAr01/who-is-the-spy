@@ -1,0 +1,81 @@
+groups:
+  - name: game-kpi-recording-rules
+    interval: 30s
+    rules:
+      - record: wits:rounds_finished:increase1d
+        expr: increase(analytics_events_total{event_name="round_finished"}[1d])
+
+      - record: wits:games_started:increase1d
+        expr: increase(analytics_events_total{event_name="game_started"}[1d])
+
+      - record: wits:joins:increase1d
+        expr: increase(analytics_events_total{event_name="player_joined"}[1d])
+
+      - record: wits:rounds_finished:increase1h
+        expr: increase(analytics_events_total{event_name="round_finished"}[1h])
+
+      - record: wits:games_started:increase1h
+        expr: increase(analytics_events_total{event_name="game_started"}[1h])
+
+      - record: wits:join_to_start:ratio1d
+        expr: wits:games_started:increase1d / clamp_min(wits:joins:increase1d, 1)
+
+      - record: wits:start_to_finish:ratio1d
+        expr: wits:rounds_finished:increase1d / clamp_min(wits:games_started:increase1d, 1)
+
+      - record: wits:start_to_finish:ratio1h
+        expr: wits:rounds_finished:increase1h / clamp_min(wits:games_started:increase1h, 1)
+
+      - record: wits:round_duration_seconds:avg1d
+        expr: increase(round_duration_seconds_sum[1d]) / clamp_min(increase(round_duration_seconds_count[1d]), 1)
+
+      - record: wits:error_rate:ratio5m
+        expr: sum(rate(bot_handler_exceptions_total[5m])) / clamp_min(sum(rate(bot_updates_total[5m])), 0.001)
+
+      - record: wits:error_rate_by_exception:ratio5m
+        expr: sum by (exception_type) (rate(bot_handler_exceptions_total[5m])) / clamp_min(sum(rate(bot_updates_total[5m])), 0.001)
+
+      - record: wits:error_rate_by_handler:ratio5m
+        expr: sum by (handler_name, update_type) (rate(bot_handler_exceptions_total[5m])) / clamp_min(sum by (update_type) (rate(bot_updates_total[5m])), 0.001)
+
+      - record: wits:unique_user_buckets:count1d
+        expr: count(sum by (bucket) (increase(analytics_actor_bucket_touches_total{actor_type="user"}[1d])) > 0)
+
+      - record: wits:unique_group_chat_buckets:count1d
+        expr: count(sum by (bucket) (increase(analytics_actor_bucket_touches_total{actor_type="group_chat"}[1d])) > 0)
+
+      - record: wits:unique_users_estimated:count1d
+        expr: -1024 * ln(clamp_min(1 - clamp_max(wits:unique_user_buckets:count1d / 1024, 0.999999), 0.000001))
+
+      - record: wits:unique_group_chats_estimated:count1d
+        expr: -1024 * ln(clamp_min(1 - clamp_max(wits:unique_group_chat_buckets:count1d / 1024, 0.999999), 0.000001))
+
+  - name: game-kpi-alert-rules
+    interval: 30s
+    rules:
+      - alert: BotErrorRateSpike
+        expr: wits:error_rate:ratio5m > 0.05 and sum(rate(bot_handler_exceptions_total[5m])) > 0.02
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Всплеск ошибок в боте"
+          description: "Доля ошибок хендлеров > 5% за 5 минут. Проверь панель Error rate by handler/exception в Grafana."
+
+      - alert: BotAnalyticsEventsSilence
+        expr: sum(increase(analytics_events_total[20m])) == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Нет аналитических событий"
+          description: "В течение 20 минут нет новых analytics events. Возможен простой бота, проблемы с polling или метриками."
+
+      - alert: StartToFinishConversionDegraded
+        expr: wits:start_to_finish:ratio1h < 0.70 and wits:games_started:increase1h >= 5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Деградация start->finish conversion"
+          description: "За последний час конверсия стартовавших игр в завершенные раунды упала ниже 70% (при >=5 стартов)."

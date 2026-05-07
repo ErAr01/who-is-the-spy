@@ -1,0 +1,101 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: who-is-the-spy-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: who-is-the-spy-bot:latest
+    container_name: who-is-the-spy-bot
+    env_file:
+      - .env
+    environment:
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      METRICS_HOST: ${METRICS_HOST:-0.0.0.0}
+      METRICS_PORT: ${METRICS_PORT:-8001}
+    depends_on:
+      - redis
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: who-is-the-spy-prometheus
+    profiles:
+      - observability
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    volumes:
+      - ./deploy/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/observability/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - bot
+      - loki
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: who-is-the-spy-loki
+    profiles:
+      - observability
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./deploy/observability/loki/loki-config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: who-is-the-spy-promtail
+    profiles:
+      - observability
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./deploy/observability/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail-positions:/tmp/positions
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.5
+    container_name: who-is-the-spy-grafana
+    profiles:
+      - observability
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./deploy/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./deploy/observability/grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
+    depends_on:
+      - prometheus
+      - loki
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  prometheus-data:
+  loki-data:
+  promtail-positions:
+  grafana-data:
