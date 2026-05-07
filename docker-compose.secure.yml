@@ -26,6 +26,9 @@ services:
     env_file:
       - .env
     environment:
+      # В secure-профиле Redis всегда с паролем.
+      # Если REDIS_URL не задан в .env, используем безопасный дефолт для внутренней сети compose.
+      REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
       METRICS_HOST: ${METRICS_HOST:-0.0.0.0}
       METRICS_PORT: ${METRICS_PORT:-8001}
