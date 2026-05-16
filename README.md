@@ -1,23 +1,24 @@
-# Who Is The Spy (Telegram MVP)
+# Who Is The Spy (Telegram Bot + Labeling CLI)
 
-MVP-бот для игры «Кто шпион» в Telegram:
-- общий чат для лобби и голосования;
-- личные сообщения для выдачи ролей/материалов;
-- режимы: обычный, пустой шпион, кастомный.
+Telegram-бот для игры «Кто шпион» и отдельный CLI-сервис для подготовки контента:
+- игровой цикл в групповом чате (лобби -> раунд -> голосование);
+- персональные карточки и роли в личных сообщениях;
+- подбор карточек из локальных SQLite-баз с поддержкой image-embedding контура.
 
-## Возможности MVP
+## Актуальные возможности
 
 - `/newgame` — создать лобби (только в группе).
 - Кнопка `Join` — присоединиться к игре.
-- Выбор режима кнопками:
-  - `Слова` — мирные и шпион получают разные слова;
-  - `Пустой шпион` — мирные получают слово, шпион получает пустое задание;
-  - `Кастом` — админ задаёт материал для мирных и шпиона (текст или фото).
 - `/startgame` — запустить игру (минимум 3 игрока).
 - `/vote` — открыть голосование.
 - `/endvote` — завершить голосование и показать результат.
 - `/cancel` — отменить активную игру.
-- `/testpair` — в личке открыть тест-лобби: выбрать категории и сгенерировать раунд (карточки мирного и шпиона с Wikipedia и Google).
+- `/testpair` — в личке открыть тест-лобби, выбрать категории и сгенерировать тестовый раунд.
+
+## Полная документация
+
+- Краткий индекс разделов: `docs/TECHNICAL_DOCUMENTATION_RU.md`
+- Развёрнутые секции: `docs/technical_documentation_ru/`
 
 ## Инструкция для пользователей: запуск и игра
 
@@ -154,17 +155,34 @@ docker compose -f deploy/observability/posthog/docker-compose.posthog.yml up -d
   - генерация тестового раунда,
   - выдача карточек мирного и шпиона с ссылками Wikipedia и Google.
 
-## Кастомный режим
+## Кастомный режим (экспериментальный)
 
+Сценарий кастомного раунда сохраняется для ручных/экспериментальных запусков.
 Если выбран `Кастом`, после `/startgame` бот пишет админу в личку:
 1. пришли материал для мирных (текст или фото);
 2. пришли материал для шпиона того же типа (текст/текст или фото/фото).
 
 После сохранения админ повторно запускает `/startgame` в группе.
 
-## Контент
+## Данные проекта (актуально)
 
-- Игровой контент берется из SQLite-базы разметки: `data/images/cards.db`.
+Для стабильной работы в репозитории должны присутствовать:
+- рабочая БД карточек: `data/images/cards_prod.db`;
+- БД image embeddings: `data/images/image_embeddings.db`;
+- исходные датасеты для пересборки/пополнения БД:
+  - `data/images/anime_top100`
+  - `data/images/cartoons_top200`
+  - `data/images/models_top100`
+  - `data/images/movies_series_top128`
+
+Рекомендуемая настройка runtime:
+
+```env
+LABELING_DB_PATH=data/images/cards_prod.db
+IMAGE_EMBEDDING_DB_PATH=data/images/image_embeddings.db
+```
+
+`data/images/cards.db` можно использовать как legacy/экспериментальную БД, но для основного запуска рекомендуется `cards_prod.db`.
 
 ## Ограничения MVP
 
@@ -221,7 +239,8 @@ docker compose -f deploy/observability/posthog/docker-compose.posthog.yml up -d
 
 ## Card Labeling Service (CLI)
 
-Сервис разметки карточек работает отдельно от игрового движка и хранит данные в `data/images/cards.db`.
+Сервис разметки карточек работает отдельно от игрового движка и хранит данные в `LABELING_DB_PATH`
+(по умолчанию `data/images/cards.db`, для рабочего контура рекомендуется `data/images/cards_prod.db`).
 Картинки сохраняются в SQLite как BLOB вместе с тегами внешности и embedding-вектором.
 
 ### Переменные окружения
@@ -232,7 +251,7 @@ docker compose -f deploy/observability/posthog/docker-compose.posthog.yml up -d
 OPENAI_API_KEY=sk-...
 OPENAI_VISION_MODEL=gpt-4o-mini
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-LABELING_DB_PATH=data/images/cards.db
+LABELING_DB_PATH=data/images/cards_prod.db
 IMAGE_EMBEDDING_DB_PATH=data/images/image_embeddings.db
 IMAGE_EMBEDDING_PROVIDER=local_clip
 LOCAL_CLIP_MODEL_NAME=openai/clip-vit-base-patch32
@@ -267,6 +286,7 @@ python -m src.labeling.cli export-images --dir ./exported
 python -m src.labeling.cli stats
 python -m src.labeling.cli image-embed-ingest --image ./samples/bruce.jpg --id bruce-willis
 python -m src.labeling.cli image-embed-ingest-batch --dir ./samples
+python -m src.labeling.cli image-embed-reembed --image ./samples/bruce.jpg --id bruce-willis
 python -m src.labeling.cli image-embed-list
 ```
 
@@ -280,7 +300,6 @@ Runtime-матчер по image embeddings включается отдельно
 
 1. Подготовить зависимости:
    - `pip install -r requirements.txt`
-   - `pip install torch transformers`
 2. Проверить env:
    - `IMAGE_EMBEDDING_PROVIDER=local_clip`
    - `IMAGE_EMBEDDING_DB_PATH=data/images/image_embeddings.db`
@@ -291,7 +310,9 @@ Runtime-матчер по image embeddings включается отдельно
 4. Проверить результат:
    - `python -m src.labeling.cli image-embed-list`
    - `python -m src.labeling.cli image-embed-list --format json`
-5. После заполнения включить runtime matcher:
+5. При необходимости пересчитать конкретную запись:
+   - `python -m src.labeling.cli image-embed-reembed --image ./samples/bruce.jpg --id bruce-willis --provider local_clip`
+6. После заполнения включить runtime matcher:
    - `ENABLE_IMAGE_EMBEDDING_MATCHER=true` и перезапустить бот.
 
 Важно:
@@ -311,3 +332,23 @@ Runtime-матчер по image embeddings включается отдельно
 ```
 
 Если sidecar отсутствует, `name` берётся из имени файла.
+
+## Мониторинг эмбеддингов (версионируемые графики)
+
+Для анализа дрейфа векторов между разными версиями БД сохраняй графики в отдельную директорию:
+- `data/embeddings_tracking/`
+
+Рекомендуемый формат имени:
+- `embeddings_2d_vYYYY-MM-DD_HH-MM-SS.png`
+- `image_embeddings_2d_vYYYY-MM-DD_HH-MM-SS.png`
+
+Пример:
+
+```bash
+python -m src.labeling.cli plot-embeddings \
+  --out data/embeddings_tracking/embeddings_2d_v2026-05-16_15-50-00.png
+```
+
+Текущие версии в репозитории:
+- `data/embeddings_tracking/embeddings_2d_v2026-05-07_20-44-31.png`
+- `data/embeddings_tracking/image_embeddings_2d_v2026-05-12_13-00-52.png`
