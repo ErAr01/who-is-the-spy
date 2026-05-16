@@ -233,6 +233,12 @@ OPENAI_API_KEY=sk-...
 OPENAI_VISION_MODEL=gpt-4o-mini
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 LABELING_DB_PATH=data/images/cards.db
+IMAGE_EMBEDDING_DB_PATH=data/images/image_embeddings.db
+IMAGE_EMBEDDING_PROVIDER=local_clip
+LOCAL_CLIP_MODEL_NAME=openai/clip-vit-base-patch32
+IMAGE_EMBEDDING_DEVICE=cpu
+IMAGE_EMBEDDING_BATCH_SIZE=8
+ENABLE_IMAGE_EMBEDDING_MATCHER=false
 PAIR_SIMILARITY_THRESHOLD=0.55
 PAIR_HISTORY_SIZE=50
 PAIR_SELECTION_MODE=pairwise_topk
@@ -259,7 +265,38 @@ python -m src.labeling.cli relabel --id bruce-willis
 python -m src.labeling.cli re-embed --all
 python -m src.labeling.cli export-images --dir ./exported
 python -m src.labeling.cli stats
+python -m src.labeling.cli image-embed-ingest --image ./samples/bruce.jpg --id bruce-willis
+python -m src.labeling.cli image-embed-ingest-batch --dir ./samples
+python -m src.labeling.cli image-embed-list
 ```
+
+Новые команды `image-embed-*` записывают эмбеддинги изображений в отдельную БД
+`IMAGE_EMBEDDING_DB_PATH` и не меняют таблицы `cards/card_tags/pair_history`.
+Для локального режима по умолчанию используется CLIP-модель (`IMAGE_EMBEDDING_PROVIDER=local_clip`).
+Runtime-матчер по image embeddings включается отдельно через `ENABLE_IMAGE_EMBEDDING_MATCHER=true`,
+по умолчанию игра продолжает работать через tag-based механику.
+
+### Быстрый запуск image embeddings (local CLIP)
+
+1. Подготовить зависимости:
+   - `pip install -r requirements.txt`
+   - `pip install torch transformers`
+2. Проверить env:
+   - `IMAGE_EMBEDDING_PROVIDER=local_clip`
+   - `IMAGE_EMBEDDING_DB_PATH=data/images/image_embeddings.db`
+   - `ENABLE_IMAGE_EMBEDDING_MATCHER=false` (на этапе заполнения БД).
+3. Заполнить отдельную image DB:
+   - `python -m src.labeling.cli image-embed-ingest --image ./samples/bruce.jpg --id bruce-willis --provider local_clip`
+   - `python -m src.labeling.cli image-embed-ingest-batch --dir ./samples --provider local_clip`
+4. Проверить результат:
+   - `python -m src.labeling.cli image-embed-list`
+   - `python -m src.labeling.cli image-embed-list --format json`
+5. После заполнения включить runtime matcher:
+   - `ENABLE_IMAGE_EMBEDDING_MATCHER=true` и перезапустить бот.
+
+Важно:
+- для `image-embed-*` `card_id` должен существовать в `LABELING_DB_PATH`;
+- при ошибке про provider используйте только `local_clip` или `openai`.
 
 ### Формат sidecar JSON для batch ingest
 

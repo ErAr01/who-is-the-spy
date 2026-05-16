@@ -5,7 +5,12 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 
+from src.game.matching_strategy import (
+    ImageEmbeddingPairMatcherStrategy,
+    TagBasedPairMatcherStrategy,
+)
 from src.labeling.models import CardRecord, CardTags
+from src.labeling.image_embedding_storage import ImageEmbeddingStorage
 from src.labeling.storage import LabelingStorage
 from src.labeling.taxonomy import GenderPresentation
 from src.game.pair_selection import PairSelectionMode, normalize_pair_selection_mode
@@ -47,6 +52,8 @@ class ContentProvider:
     def __init__(
         self,
         labeling_db_path: Path,
+        image_embedding_db_path: Path | None = None,
+        enable_image_embedding_matcher: bool = False,
         pair_history_size: int = 50,
         pair_selection_mode: PairSelectionMode | str = PairSelectionMode.PAIRWISE_TOPK,
         pair_seed_retry_limit: int = 3,
@@ -58,6 +65,15 @@ class ContentProvider:
         self._pair_selection_mode = normalize_pair_selection_mode(pair_selection_mode)
         self._pair_seed_retry_limit = max(0, pair_seed_retry_limit)
         self._pair_logprob_threshold = pair_logprob_threshold if pair_logprob_threshold <= 0 else -2.3
+        self._matcher_strategy = TagBasedPairMatcherStrategy()
+        if enable_image_embedding_matcher:
+            db_path = image_embedding_db_path or Path("data/images/image_embeddings.db")
+            image_storage = ImageEmbeddingStorage(db_path)
+            image_storage.init_db()
+            self._matcher_strategy = ImageEmbeddingPairMatcherStrategy(
+                image_storage=image_storage,
+                fallback=self._matcher_strategy,
+            )
 
     def get_available_categories(self) -> list[str]:
         return self._storage.list_dataset_categories()
@@ -69,10 +85,13 @@ class ContentProvider:
 
         normalized_categories = self._normalize_categories(categories)
         recent_pairs = self._resolve_recent_pairs(chat_id=chat_id)
-        if self._pair_selection_mode == PairSelectionMode.SEED_TOPK:
-            pair = self._select_seed_topk_pair(cards, normalized_categories, recent_pairs, chat_id=chat_id)
-        else:
-            pair = self._select_pairwise_topk_pair(cards, normalized_categories, recent_pairs)
+        pair = self._matcher_strategy.select_pair(
+            provider=self,
+            cards=cards,
+            selected_categories=normalized_categories,
+            recent_pairs=recent_pairs,
+            chat_id=chat_id,
+        )
         if pair is None and chat_id is not None:
             pair = self._select_earliest_available_pair(cards, normalized_categories, chat_id)
         if pair is None:

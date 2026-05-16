@@ -6,6 +6,12 @@ import numpy as np
 import typer
 
 from src.config import get_settings
+from src.labeling.image_embedding_pipeline import ImageEmbeddingPipeline
+from src.labeling.image_embedding_provider import (
+    LocalClipImageEmbeddingProvider,
+    OpenAIImageEmbeddingProvider,
+)
+from src.labeling.image_embedding_storage import ImageEmbeddingStorage
 from src.labeling.llm.openai_tagger import OpenAITagger
 from src.labeling.pipeline import LabelingPipeline
 from src.labeling.similarity import PairSelector
@@ -31,6 +37,50 @@ def _pipeline(vision_model: str | None = None, embedding_model: str | None = Non
         embedding_model=embedding_model or settings.openai_embedding_model,
     )
     return LabelingPipeline(_storage(), tagger, tagger)
+
+
+def _image_embedding_storage() -> ImageEmbeddingStorage:
+    settings = get_settings()
+    storage = ImageEmbeddingStorage(settings.image_embedding_db_path)
+    storage.init_db()
+    return storage
+
+
+def _image_embedding_provider(provider_name: str | None = None):
+    settings = get_settings()
+    selected_provider = (provider_name or settings.image_embedding_provider).strip().lower()
+    if selected_provider == "local_clip":
+        return LocalClipImageEmbeddingProvider(
+            model_name=settings.local_clip_model_name,
+            device=settings.image_embedding_device,
+        )
+    if selected_provider == "openai":
+        if settings.openai_api_key is None:
+            raise typer.BadParameter("OPENAI_API_KEY is required when IMAGE_EMBEDDING_PROVIDER=openai")
+        return OpenAIImageEmbeddingProvider(
+            api_key=settings.openai_api_key.get_secret_value(),
+            model=settings.openai_embedding_model,
+        )
+    raise typer.BadParameter(
+        f"Unsupported IMAGE_EMBEDDING_PROVIDER='{selected_provider}'. Supported values: local_clip, openai."
+    )
+
+
+def _image_embedding_pipeline(provider_name: str | None = None) -> ImageEmbeddingPipeline:
+    # 📚 Что здесь происходит:
+    # Мы поднимаем отдельный pipeline именно для image-image embeddings:
+    # legacy карточки остаются в `cards.db`, а векторные "отпечатки" изображений
+    # складываются в отдельную БД. Это как две полки в архиве: одна для карточек,
+    # другая только для быстрых image-lookup экспериментов.
+    #
+    # ⚠️ Важно знать:
+    # - Card ID должен уже существовать в legacy cards DB, иначе пайплайн прервётся.
+    # - Локальный CLIP работает без внешнего API, но требует `torch + transformers`.
+    return ImageEmbeddingPipeline(
+        storage=_image_embedding_storage(),
+        provider=_image_embedding_provider(provider_name=provider_name),
+        legacy_normalizer=_storage(),
+    )
 
 
 def _normalize_categories(raw: list[str] | None) -> list[str]:
@@ -159,6 +209,113 @@ def ingest_batch(
     typer.echo(
         f"Done. Attempted={attempted}, processed={processed}, failed={failed}, skipped_duplicates={skipped}"
     )
+
+
+@app.command("image-embed-ingest")
+def image_embed_ingest(
+    image: Path = typer.Option(..., "--image", exists=True, dir_okay=False),
+    card_id: str | None = typer.Option(None, "--id"),
+    force: bool = typer.Option(False),
+    provider: str | None = typer.Option(None, "--provider"),
+) -> None:
+    pipeline = _image_embedding_pipeline(provider_name=provider)
+    resolved_card_id = card_id or image.stem
+    result = pipeline.ingest_image(
+        image_bytes=image.read_bytes(),
+        card_id=resolved_card_id,
+        file_path=str(image),
+        force=force,
+    )
+    if result.skipped_duplicate:
+        typer.echo(
+            f"Skipped duplicate image embedding: card_id={result.record.card_id} sha256={result.record.image_sha256}"
+        )
+        return
+    typer.echo(
+        f"Ingested image embedding: card_id={result.record.card_id} "
+        f"model={result.record.model} dim={result.record.dimension}"
+    )
+
+
+@app.command("image-embed-ingest-batch")
+def image_embed_ingest_batch(
+    dir_path: Path = typer.Option(..., "--dir", exists=True, file_okay=False),
+    force: bool = typer.Option(False),
+    provider: str | None = typer.Option(None, "--provider"),
+) -> None:
+    pipeline = _image_embedding_pipeline(provider_name=provider)
+    allowed_ext = {".jpg", ".jpeg", ".png", ".webp"}
+    attempted = 0
+    processed = 0
+    skipped = 0
+    failed = 0
+    for image_path in sorted(dir_path.iterdir()):
+        if image_path.suffix.lower() not in allowed_ext:
+            continue
+        attempted += 1
+        resolved_card_id = image_path.stem
+        try:
+            result = pipeline.ingest_image(
+                image_bytes=image_path.read_bytes(),
+                card_id=resolved_card_id,
+                file_path=str(image_path),
+                force=force,
+            )
+        except Exception as exc:
+            failed += 1
+            typer.echo(f"{image_path.name} -> ERROR ({type(exc).__name__}): {exc}")
+            continue
+        processed += 1
+        skipped += int(result.skipped_duplicate)
+        typer.echo(
+            f"{image_path.name} -> card_id={result.record.card_id} "
+            f"model={result.record.model} dim={result.record.dimension}"
+        )
+    typer.echo(
+        f"Done. Attempted={attempted}, processed={processed}, failed={failed}, skipped_duplicates={skipped}"
+    )
+
+
+@app.command("image-embed-reembed")
+def image_embed_reembed(
+    image: Path = typer.Option(..., "--image", exists=True, dir_okay=False),
+    card_id: str | None = typer.Option(None, "--id"),
+    provider: str | None = typer.Option(None, "--provider"),
+) -> None:
+    pipeline = _image_embedding_pipeline(provider_name=provider)
+    resolved_card_id = card_id or image.stem
+    record = pipeline.reembed_image(
+        image_bytes=image.read_bytes(),
+        card_id=resolved_card_id,
+        file_path=str(image),
+    )
+    typer.echo(
+        f"Re-embedded image: card_id={record.card_id} model={record.model} dim={record.dimension}"
+    )
+
+
+@app.command("image-embed-list")
+def image_embed_list(output_format: str = typer.Option("table", "--format")) -> None:
+    records = _image_embedding_storage().list_records()
+    if output_format == "json":
+        payload = [
+            {
+                "card_id": record.card_id,
+                "image_sha256": record.image_sha256,
+                "file_path": record.file_path,
+                "model": record.model,
+                "dimension": record.dimension,
+                "created_at": record.created_at.isoformat(),
+                "updated_at": record.updated_at.isoformat(),
+            }
+            for record in records
+        ]
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    for record in records:
+        typer.echo(
+            f"{record.card_id:24} | {record.model:32} | dim={record.dimension:4} | {record.updated_at.isoformat()}"
+        )
 
 
 @app.command("relabel")

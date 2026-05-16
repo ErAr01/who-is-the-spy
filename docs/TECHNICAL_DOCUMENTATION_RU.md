@@ -1,5 +1,26 @@
 # Техническая документация проекта Who Is The Spy
 
+Документация разбита на секционные файлы для удобной навигации и поддержки.
+
+## Оглавление
+
+1. [Назначение проекта и сценарии использования](technical_documentation_ru/01_overview_and_use_cases.md)
+2. [Архитектура, структура и потоки данных](technical_documentation_ru/02_architecture_and_data_flows.md)
+3. [Подробная документация CLI](technical_documentation_ru/03_labeling_cli_reference.md)
+4. [Конфигурация окружения и запуск](technical_documentation_ru/04_environment_and_setup.md)
+5. [Форматы данных и типичный workflow](technical_documentation_ru/05_data_formats_and_workflows.md)
+6. [Ошибки, развитие, тестирование и FAQ](technical_documentation_ru/06_operations_and_development.md)
+
+## Сопоставление со старой структурой
+
+- Разделы `1-2` -> `01_overview_and_use_cases.md`
+- Разделы `3-5` -> `02_architecture_and_data_flows.md`
+- Раздел `6` -> `03_labeling_cli_reference.md`
+- Разделы `7-8` -> `04_environment_and_setup.md`
+- Разделы `9-10` -> `05_data_formats_and_workflows.md`
+- Разделы `11-15` -> `06_operations_and_development.md`
+# Техническая документация проекта Who Is The Spy
+
 ## 1. Назначение проекта
 
 `Who Is The Spy` — Telegram-бот для игры "Кто шпион", где:
@@ -257,6 +278,81 @@ Sidecar `photo.json` (опционально, рядом с `photo.jpg`):
 - если нет `matplotlib` -> `BadParameter`;
 - если <2 карточек/векторов -> `BadParameter`.
 
+### 6.11 `image-embed-ingest`
+
+Создаёт/обновляет image embedding одной картинки в отдельной БД эмбеддингов.
+
+Параметры:
+- `--image PATH` (обязательный).
+- `--id TEXT` (опционально, default: stem файла).
+- `--force` (флаг): принудительный пересчёт.
+- `--provider [local_clip|openai]` (опционально, override env).
+
+Ограничение:
+- `card_id` должен существовать в legacy `cards.db`, иначе команда вернёт ошибку.
+
+Когда использовать:
+- точечная загрузка/обновление одной карточки в `IMAGE_EMBEDDING_DB_PATH`;
+- быстрая проверка, что локальный CLIP-провайдер работает в текущем окружении.
+
+Пример:
+- `python -m src.labeling.cli image-embed-ingest --image ./samples/bruce.jpg --id bruce-willis --provider local_clip`
+
+### 6.12 `image-embed-ingest-batch`
+
+Пакетная image-embedding разметка каталога (`.jpg/.jpeg/.png/.webp`), пишет только в `IMAGE_EMBEDDING_DB_PATH`.
+
+Параметры:
+- `--dir PATH` (обязательный).
+- `--force` (флаг).
+- `--provider [local_clip|openai]` (опционально).
+
+Поведение:
+- `card_id` берётся из имени файла (`stem`), поэтому имена файлов должны совпадать с `card_id` в legacy БД;
+- в конце команда печатает сводку `Attempted/processed/failed/skipped_duplicates`.
+
+Пример:
+- `python -m src.labeling.cli image-embed-ingest-batch --dir ./samples --provider local_clip`
+
+### 6.13 `image-embed-reembed`
+
+Принудительный пересчёт image embedding одной картинки.
+
+Параметры:
+- `--image PATH` (обязательный).
+- `--id TEXT` (опционально, default: stem файла).
+- `--provider [local_clip|openai]` (опционально).
+
+Когда использовать:
+- если нужно принудительно пересчитать вектор уже существующей записи;
+- после смены модели (`LOCAL_CLIP_MODEL_NAME`) или устройства (`IMAGE_EMBEDDING_DEVICE`).
+
+Пример:
+- `python -m src.labeling.cli image-embed-reembed --image ./samples/bruce.jpg --id bruce-willis --provider local_clip`
+
+### 6.14 `image-embed-list`
+
+Список image embeddings из отдельной БД.
+
+Параметры:
+- `--format [table|json]`.
+
+Примеры:
+- `python -m src.labeling.cli image-embed-list`
+- `python -m src.labeling.cli image-embed-list --format json`
+
+### 6.15 Быстрый runbook для image-embedding CLI
+
+1. Проверить, что карточки уже есть в legacy БД:
+   - `python -m src.labeling.cli list`
+2. Загрузить/обновить image embeddings:
+   - одна карточка: `image-embed-ingest`;
+   - каталог: `image-embed-ingest-batch`.
+3. Пересчитать выбранные записи при необходимости:
+   - `image-embed-reembed`.
+4. Проверить содержимое отдельной image DB:
+   - `image-embed-list` (`table` или `json`).
+
 ## 7. Конфигурация окружения (.env)
 
 Источники:
@@ -279,6 +375,18 @@ Sidecar `photo.json` (опционально, рядом с `photo.jpg`):
   - `src/labeling/cli.py` -> `OpenAITagger.embedding_model`.
 - `LABELING_DB_PATH` (default `data/images/cards.db`):
   - Используется в `group/private handlers` и в labeling storage.
+- `IMAGE_EMBEDDING_DB_PATH` (default `data/images/image_embeddings.db`):
+  - Используется отдельным image-embedding pipeline/storage (`src/labeling/image_embedding_*`).
+- `IMAGE_EMBEDDING_PROVIDER` (default `local_clip`):
+  - Выбор провайдера image embeddings (`local_clip` или `openai`) для CLI-команд `image-embed-*`.
+- `LOCAL_CLIP_MODEL_NAME` (default `openai/clip-vit-base-patch32`):
+  - Локальная CLIP-модель для `LocalClipImageEmbeddingProvider`.
+- `IMAGE_EMBEDDING_DEVICE` (default `cpu`):
+  - Устройство инференса для локального CLIP (`cpu`, `mps`, `cuda`).
+- `IMAGE_EMBEDDING_BATCH_SIZE` (default `8`):
+  - Размер batch для image-embedding сценариев.
+- `ENABLE_IMAGE_EMBEDDING_MATCHER` (default `false`):
+  - Включает runtime-подбор пары через image embeddings; при `false` используется legacy tag-based путь.
 - `PAIR_SIMILARITY_THRESHOLD` (default `0.55`):
   - Используется в CLI `pair`.
 - `PAIR_HISTORY_SIZE` (default `50`):
@@ -297,6 +405,28 @@ Sidecar `photo.json` (опционально, рядом с `photo.jpg`):
 - В `.env` содержатся чувствительные данные (токены/API keys).
 - Не коммитить `.env` в VCS.
 - При утечке токена/API key нужно выполнить ротацию у провайдера.
+
+### 7.3 Переменные image-embedding контура
+
+Минимальный набор для локального CLIP:
+
+```env
+LABELING_DB_PATH=data/images/cards.db
+IMAGE_EMBEDDING_DB_PATH=data/images/image_embeddings.db
+IMAGE_EMBEDDING_PROVIDER=local_clip
+LOCAL_CLIP_MODEL_NAME=openai/clip-vit-base-patch32
+IMAGE_EMBEDDING_DEVICE=cpu
+IMAGE_EMBEDDING_BATCH_SIZE=8
+ENABLE_IMAGE_EMBEDDING_MATCHER=false
+```
+
+Пояснения:
+- `LABELING_DB_PATH` — legacy БД карточек, где `card_id` должен уже существовать.
+- `IMAGE_EMBEDDING_DB_PATH` — отдельная БД с image embeddings (не смешивается с `cards/card_tags/pair_history`).
+- `IMAGE_EMBEDDING_PROVIDER` — провайдер для `image-embed-*` команд (`local_clip` или `openai`).
+- `ENABLE_IMAGE_EMBEDDING_MATCHER` — feature flag runtime-подбора пары:
+  - `false` (по умолчанию): работает legacy tag-based matcher;
+  - `true`: включается image-embedding matcher в runtime.
 
 ## 8. Установка и локальный запуск
 
@@ -332,6 +462,22 @@ Sidecar `photo.json` (опционально, рядом с `photo.jpg`):
 Пример smoke:
 - `python -m src.labeling.cli list`
 - `python -m src.labeling.cli stats`
+
+## 8.4 Подготовка окружения для local CLIP
+
+1. Создать/активировать venv:
+   - `python3 -m venv .venv`
+   - `source .venv/bin/activate`
+2. Установить базовые зависимости проекта:
+   - `pip install -r requirements.txt`
+3. Убедиться, что доступны зависимости локального CLIP:
+   - `pip install torch transformers`
+4. Проверить провайдер и доступность модели:
+   - `python -m src.labeling.cli image-embed-ingest --image ./samples/bruce.jpg --id bruce-willis --provider local_clip`
+
+Примечания:
+- для Apple Silicon можно использовать `IMAGE_EMBEDDING_DEVICE=mps`, для NVIDIA — `cuda`, при отсутствии ускорителя — `cpu`;
+- если `torch`/`transformers` не установлены, local CLIP не поднимется (см. troubleshooting в разделе 14).
 
 ## 9. Форматы входных и выходных данных
 
@@ -393,6 +539,78 @@ Sidecar `photo.json` (опционально, рядом с `photo.jpg`):
 - Логи: `docker compose logs -f bot`
 - Перезапуск: `docker compose restart bot`
 - Бэкап БД: `cp data/images/cards.db data/images/cards.db.backup.<timestamp>`
+
+### 10.4 Заполнение отдельной БД image embeddings (local CLIP)
+
+Цель: просчитать image embeddings и сохранить их в отдельную БД `IMAGE_EMBEDDING_DB_PATH`, не меняя legacy-таблицы.
+
+1. Проверить env-конфигурацию:
+   - `IMAGE_EMBEDDING_PROVIDER=local_clip`
+   - `IMAGE_EMBEDDING_DB_PATH=data/images/image_embeddings.db`
+   - `ENABLE_IMAGE_EMBEDDING_MATCHER=false` (если пока только готовим данные).
+2. Подготовить зависимости local CLIP:
+   - `pip install torch transformers`
+3. Убедиться, что карточки уже существуют в `LABELING_DB_PATH`:
+   - `python -m src.labeling.cli list`
+4. Выполнить первичную загрузку:
+   - одна карточка:
+     - `python -m src.labeling.cli image-embed-ingest --image ./samples/bruce.jpg --id bruce-willis --provider local_clip`
+   - пакетно (имя файла должно совпадать с `card_id`):
+     - `python -m src.labeling.cli image-embed-ingest-batch --dir ./samples --provider local_clip`
+5. При необходимости пересчитать конкретную запись:
+   - `python -m src.labeling.cli image-embed-reembed --image ./samples/bruce.jpg --id bruce-willis --provider local_clip`
+6. Проверить наполнение image DB:
+   - `python -m src.labeling.cli image-embed-list`
+   - `python -m src.labeling.cli image-embed-list --format json`
+7. Включить runtime matcher, когда БД заполнена:
+   - `ENABLE_IMAGE_EMBEDDING_MATCHER=true`
+   - перезапустить бот/процесс после изменения `.env`.
+
+#### Готовый набор команд (copy-paste)
+
+```bash
+# 0) Из корня проекта
+cd /Users/artemermilov/PycharmProjects/who_is_the_spy
+
+# 1) Поднять окружение и зависимости
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# 2) Подготовить .env (если еще нет)
+cp .env.example .env
+
+# 3) Настроить CLIP-контур в текущей shell-сессии
+export PYTHONPATH=.
+export IMAGE_EMBEDDING_PROVIDER=local_clip
+export IMAGE_EMBEDDING_DB_PATH=data/images/image_embeddings.db
+export LOCAL_CLIP_MODEL_NAME=openai/clip-vit-base-patch32
+export IMAGE_EMBEDDING_DEVICE=cpu
+export ENABLE_IMAGE_EMBEDDING_MATCHER=false
+
+# 4) Просчет эмбеддинга для одной картинки
+# Важно: --id должен существовать в legacy БД cards.db
+python -m src.labeling.cli image-embed-ingest \
+  --image ./samples/bruce.jpg \
+  --id bruce-willis \
+  --provider local_clip
+
+# 5) Пакетный просчет по папке
+# card_id берется из имени файла (stem)
+python -m src.labeling.cli image-embed-ingest-batch \
+  --dir ./samples \
+  --provider local_clip
+
+# 6) Принудительный пересчет для конкретной картинки
+python -m src.labeling.cli image-embed-reembed \
+  --image ./samples/bruce.jpg \
+  --id bruce-willis \
+  --provider local_clip
+
+# 7) Проверка наполнения image-embedding БД
+python -m src.labeling.cli image-embed-list
+python -m src.labeling.cli image-embed-list --format json
+```
 
 ## 11. Обработка ошибок и ограничения
 
@@ -499,6 +717,36 @@ Sidecar `photo.json` (опционально, рядом с `photo.jpg`):
 Проверить:
 - `REDIS_URL=redis://redis:6379/0` в `.env` для docker-compose;
 - статус контейнера `redis` (`docker compose ps`).
+
+### Q7. Ошибка `Card ID '<id>' does not exist in legacy labeling DB`
+Причина: для `image-embed-*` команд передан `card_id`, которого нет в `LABELING_DB_PATH`.
+Решение:
+- проверить наличие карточки: `python -m src.labeling.cli list`;
+- создать карточку через `ingest`/`ingest-batch` или передать корректный `--id`;
+- для batch-режима убедиться, что `stem` имени файла совпадает с существующим `card_id`.
+
+### Q8. Ошибка про отсутствие `torch`/`transformers` при `local_clip`
+Причина: не установлены зависимости локального CLIP-провайдера.
+Решение:
+- активировать venv и установить пакеты: `pip install torch transformers`;
+- повторить запуск `image-embed-ingest` с `--provider local_clip`.
+
+### Q9. Ошибка `Unsupported IMAGE_EMBEDDING_PROVIDER='...'`
+Причина: задано невалидное значение провайдера в env или в `--provider`.
+Решение:
+- использовать только `local_clip` или `openai`;
+- проверить `IMAGE_EMBEDDING_PROVIDER` в `.env`;
+- при необходимости переопределить параметром `--provider local_clip`.
+
+### Q10. `image-embed-list` ничего не выводит (пустая image DB)
+Причина:
+- image-embedding ingest ещё не запускался;
+- все записи упали с ошибкой при batch;
+- выбран другой файл БД в `IMAGE_EMBEDDING_DB_PATH`.
+Решение:
+- запустить `image-embed-ingest` или `image-embed-ingest-batch`;
+- проверить итоговую сводку `processed/failed` в batch;
+- убедиться, что путь `IMAGE_EMBEDDING_DB_PATH` совпадает с ожидаемым.
 
 ## 15. Что не найдено / не реализовано
 

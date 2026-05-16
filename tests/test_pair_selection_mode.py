@@ -6,6 +6,7 @@ from unittest.mock import ANY, Mock, patch
 
 from src.config import Settings
 from src.game.content import ContentProvider
+from src.game.matching_strategy import TagBasedPairMatcherStrategy
 from src.game.pair_selection import PairSelectionMode
 from src.labeling.models import CardRecord, CardTags
 from src.labeling.similarity import PairSelector
@@ -80,6 +81,7 @@ class SeedTopKBehaviorTest(TestCase):
         provider = ContentProvider.__new__(ContentProvider)
         storage = Mock()
         provider._storage = storage
+        provider._matcher_strategy = TagBasedPairMatcherStrategy()
         provider._pair_history_size = 50
         provider._pair_seed_retry_limit = 3
         provider._pair_logprob_threshold = -2.3

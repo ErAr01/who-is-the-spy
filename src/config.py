@@ -16,6 +16,15 @@ class Settings(BaseSettings):
     openai_vision_model: str = Field(default="gpt-4o-mini", alias="OPENAI_VISION_MODEL")
     openai_embedding_model: str = Field(default="text-embedding-3-small", alias="OPENAI_EMBEDDING_MODEL")
     labeling_db_path: Path = Field(default=Path("data/images/cards.db"), alias="LABELING_DB_PATH")
+    image_embedding_db_path: Path = Field(
+        default=Path("data/images/image_embeddings.db"),
+        alias="IMAGE_EMBEDDING_DB_PATH",
+    )
+    image_embedding_provider: str = Field(default="local_clip", alias="IMAGE_EMBEDDING_PROVIDER")
+    local_clip_model_name: str = Field(default="openai/clip-vit-base-patch32", alias="LOCAL_CLIP_MODEL_NAME")
+    image_embedding_device: str = Field(default="cpu", alias="IMAGE_EMBEDDING_DEVICE")
+    image_embedding_batch_size: int = Field(default=8, alias="IMAGE_EMBEDDING_BATCH_SIZE")
+    enable_image_embedding_matcher: bool = Field(default=False, alias="ENABLE_IMAGE_EMBEDDING_MATCHER")
     pair_similarity_threshold: float = Field(default=0.55, alias="PAIR_SIMILARITY_THRESHOLD")
     pair_history_size: int = Field(default=50, alias="PAIR_HISTORY_SIZE")
     pair_selection_mode: str = Field(default="pairwise_topk", alias="PAIR_SELECTION_MODE")
@@ -58,6 +67,25 @@ class Settings(BaseSettings):
         except (TypeError, ValueError):
             return -2.3
         return parsed if parsed <= 0.0 else -2.3
+
+    @field_validator("image_embedding_provider", mode="before")
+    @classmethod
+    def _validate_image_embedding_provider(cls, value: object) -> str:
+        if value is None:
+            return "local_clip"
+        normalized = str(value).strip().lower()
+        return normalized if normalized in {"local_clip", "openai"} else "local_clip"
+
+    @field_validator("image_embedding_batch_size", mode="before")
+    @classmethod
+    def _validate_image_embedding_batch_size(cls, value: object) -> int:
+        if isinstance(value, bool):
+            return 8
+        try:
+            parsed = int(str(value).strip()) if isinstance(value, str) else int(value)
+        except (TypeError, ValueError):
+            return 8
+        return parsed if parsed > 0 else 8
 
 
 @lru_cache
