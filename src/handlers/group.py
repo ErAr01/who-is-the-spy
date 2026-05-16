@@ -1,13 +1,16 @@
+from __future__ import annotations
+
 from time import time
+from typing import TYPE_CHECKING
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import Message
 
 from src.analytics import AnalyticsEmitter, AnalyticsEvent, AnalyticsEventName
 from src.game.content import ContentProvider
 from src.game.engine import (
-    build_voting_result_text,
     finish_voting,
     prepare_game_round,
     send_roles,
@@ -15,9 +18,11 @@ from src.game.engine import (
 )
 from src.game.models import Game, GameMode, GameState, Player
 from src.game.provider_factory import build_content_provider
-from src.game.repo import GameRepo
-from src.handlers.callbacks import render_lobby_text
+from src.handlers.callbacks import complete_round, render_lobby_text
 from src.utils.keyboards import lobby_keyboard, vote_keyboard
+
+if TYPE_CHECKING:
+    from src.game.repo import GameRepo
 
 router = Router(name="group")
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
@@ -40,6 +45,18 @@ def _round_rules_text() -> str:
         "осторожно и не выдавать себя.\n\n"
         "В конце раунда все игроки голосуют за того, кого считают шпионом. Побеждают мирные жители, если правильно "
         "находят шпиона. Шпион побеждает, если ему удаётся остаться незамеченным."
+    )
+
+
+def _commands_guide_text() -> str:
+    return (
+        "Команды игры:\n"
+        "- <b>/newgame</b> — создать новое лобби.\n"
+        "- <b>Join</b> — присоединиться к игре через кнопку в лобби.\n"
+        "- <b>/startgame</b> — начать раунд и раздать роли.\n"
+        "- <b>/vote</b> — открыть голосование.\n"
+        "- <b>/endvote</b> — завершить голосование вручную.\n"
+        "- <b>/cancel</b> — отменить текущую игру."
     )
 
 
@@ -107,6 +124,12 @@ async def start_game(
     if len(game.players) < 3:
         await message.answer("Нужно минимум 3 игрока.")
         return
+
+    commands_message = await message.answer(_commands_guide_text())
+    try:
+        await bot.pin_chat_message(chat_id=message.chat.id, message_id=commands_message.message_id, disable_notification=True)
+    except (TelegramBadRequest, TelegramForbiddenError):
+        pass
 
     provider = _build_content_provider()
     try:
@@ -247,23 +270,15 @@ async def end_vote(message: Message, repo: GameRepo, analytics_emitter: Analytic
         return
 
     result = finish_voting(game)
-    await message.answer(build_voting_result_text(game, result))
-    analytics_emitter.emit(
-        AnalyticsEvent(
-            event_name=AnalyticsEventName.ROUND_FINISHED,
-            chat_id=game.chat_id,
-            user_id=message.from_user.id,
-            game_id=str(game.chat_id),
-            round_id=f"{game.chat_id}:1",
-            payload={
-                "votes_count": len(game.votes),
-                "voted_out_id": result.voted_out_id,
-                "is_spy_caught": result.is_spy_caught,
-                "round_duration_seconds": result.round_duration_seconds,
-            },
-        )
+    await complete_round(
+        game=game,
+        result=result,
+        repo=repo,
+        analytics_emitter=analytics_emitter,
+        user_id=message.from_user.id,
+        responder=message,
+        auto_finished=False,
     )
-    await repo.delete_game(game.chat_id)
 
 
 @router.message(Command("cancel"))

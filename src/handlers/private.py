@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from html import escape
+from typing import TYPE_CHECKING
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
@@ -11,7 +14,10 @@ from src.game.content import ContentProvider
 from src.game.engine import build_google_search_url
 from src.game.models import PayloadType
 from src.game.provider_factory import build_content_provider
-from src.game.repo import GameRepo
+from src.utils.category_labels import category_label, format_categories
+
+if TYPE_CHECKING:
+    from src.game.repo import GameRepo
 
 router = Router(name="private")
 router.message.filter(F.chat.type == "private")
@@ -43,7 +49,7 @@ def _parse_categories_from_command_text(raw: str | None) -> list[str]:
 
 
 def _test_round_text(selected_categories: list[str]) -> str:
-    categories_text = ", ".join(selected_categories) if selected_categories else "все доступные"
+    categories_text = format_categories(selected_categories) if selected_categories else "все доступные"
     return (
         "Тестовый режим: симуляция раунда в личке.\n"
         "Выбери категории и нажми «Сгенерировать раунд».\n"
@@ -57,7 +63,7 @@ def _test_round_keyboard(available_categories: list[str], selected_categories: l
     if available_categories:
         category_buttons = [
             InlineKeyboardButton(
-                text=f"{'🟢' if category in selected_categories else '⚪️'} {category}",
+                text=f"{'🟢' if category in selected_categories else '⚪️'} {category_label(category)}",
                 callback_data=f"testround:category:{category}",
             )
             for category in available_categories
@@ -211,7 +217,7 @@ async def roll_test_round(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer("Не удалось загрузить картинки пары из БД.", show_alert=True)
         return
 
-    categories_text = ", ".join(selected_categories) if selected_categories else "все доступные"
+    categories_text = format_categories(selected_categories) if selected_categories else "все доступные"
     await callback.message.answer(
         f"Тестовый раунд готов.\nКатегории: <b>{categories_text}</b>\nТема: <b>{escape(pair.theme)}</b>"
     )
