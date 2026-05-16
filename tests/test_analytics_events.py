@@ -155,7 +155,6 @@ class RuntimeAnalyticsInstrumentationTest(IsolatedAsyncioTestCase):
         repo = SimpleNamespace(
             get_game=AsyncMock(return_value=game),
             save_game=AsyncMock(),
-            delete_game=AsyncMock(),
         )
         emitter = Mock()
         callback = SimpleNamespace(
@@ -180,12 +179,12 @@ class RuntimeAnalyticsInstrumentationTest(IsolatedAsyncioTestCase):
         self.assertEqual(emitted.event_name, AnalyticsEventName.ROUND_FINISHED)
         self.assertTrue(emitted.payload["auto_finished"])
         self.assertEqual(emitted.payload["round_duration_seconds"], 42)
-        repo.delete_game.assert_awaited_once_with(101)
+        self.assertEqual(repo.save_game.await_count, 2)
 
     async def test_end_vote_emits_round_duration(self) -> None:
         game = self._build_game()
         game.votes = {1: 2, 2: 2}
-        repo = SimpleNamespace(get_game=AsyncMock(return_value=game), delete_game=AsyncMock())
+        repo = SimpleNamespace(get_game=AsyncMock(return_value=game), save_game=AsyncMock())
         emitter = Mock()
         message = SimpleNamespace(
             from_user=SimpleNamespace(id=1),
@@ -207,7 +206,7 @@ class RuntimeAnalyticsInstrumentationTest(IsolatedAsyncioTestCase):
         emitted = emitter.emit.call_args.args[0]
         self.assertEqual(emitted.event_name, AnalyticsEventName.ROUND_FINISHED)
         self.assertEqual(emitted.payload["round_duration_seconds"], 17)
-        repo.delete_game.assert_awaited_once_with(101)
+        repo.save_game.assert_awaited_once_with(game)
 
 
 class RoundDurationEngineTest(TestCase):

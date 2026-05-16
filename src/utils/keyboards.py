@@ -1,6 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from src.game.models import Game
+from src.utils.category_labels import category_label
 
 
 def lobby_keyboard(
@@ -15,7 +16,7 @@ def lobby_keyboard(
 
     category_buttons = [
         InlineKeyboardButton(
-            text=f"{'🟢' if category in selected_categories else '⚪️'} {category}",
+            text=f"{'🟢' if category in selected_categories else '⚪️'} {category_label(category)}",
             callback_data=f"category:{chat_id}:{category}",
         )
         for category in available_categories
@@ -37,3 +38,22 @@ def vote_keyboard(game: Game) -> InlineKeyboardMarkup:
             ]
         )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def post_round_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔁 Еще раунд (те же категории)",
+                    callback_data=f"postround:repeat:{chat_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🗂 Выбрать новые категории",
+                    callback_data=f"postround:newcats:{chat_id}",
+                )
+            ],
+        ]
+    )
