@@ -127,3 +127,51 @@ ENABLE_IMAGE_EMBEDDING_MATCHER=false
 Примечания:
 - для Apple Silicon можно использовать `IMAGE_EMBEDDING_DEVICE=mps`, для NVIDIA — `cuda`, при отсутствии ускорителя — `cpu`;
 - если `torch`/`transformers` не установлены, local CLIP не поднимется (см. troubleshooting в разделе 14).
+
+## 8.5 Подключение к Grafana на сервере с личного ноутбука
+
+Ниже короткий сценарий: сервер уже развернут, доступ к Grafana идет через SSH-туннель.
+
+### На сервере (один раз проверить)
+
+```bash
+cd /root/who_is_the_spy
+docker compose --profile observability up -d
+docker compose ps grafana
+curl http://127.0.0.1:3000/api/health
+```
+
+### На личном ноутбуке (каждый раз для подключения)
+
+```bash
+# 1) Поднять SSH-туннель до серверной Grafana
+ssh -N -L 3000:127.0.0.1:3000 root@<PUBLIC_IP>
+```
+
+Во втором окне терминала:
+
+```bash
+# 2) Открыть Grafana локально
+open http://localhost:3000
+```
+
+Логин в Grafana:
+- username: значение `GRAFANA_ADMIN_USER` на сервере;
+- password: значение `GRAFANA_ADMIN_PASSWORD` на сервере.
+
+Проверить креды на сервере:
+
+```bash
+cd /root/who_is_the_spy
+rg "^GRAFANA_ADMIN_(USER|PASSWORD)=" .env
+```
+
+Быстрые команды:
+
+```bash
+# Туннель в фоне (чтобы не держать окно)
+ssh -fN -L 3000:127.0.0.1:3000 root@<PUBLIC_IP>
+
+# Остановить фоновый туннель
+pkill -f "ssh -fN -L 3000:127.0.0.1:3000 root@<PUBLIC_IP>"
+```
