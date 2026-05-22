@@ -165,7 +165,7 @@ class RuntimeAnalyticsInstrumentationTest(IsolatedAsyncioTestCase):
         )
 
         with patch(
-            "src.handlers.callbacks.finish_voting",
+            "src.handlers.admin_actions.finish_voting",
             return_value=VotingResult(
                 voted_out_id=2,
                 votes={2: 2},
@@ -193,7 +193,7 @@ class RuntimeAnalyticsInstrumentationTest(IsolatedAsyncioTestCase):
         )
 
         with patch(
-            "src.handlers.group.finish_voting",
+            "src.handlers.admin_actions.finish_voting",
             return_value=VotingResult(
                 voted_out_id=2,
                 votes={2: 2},

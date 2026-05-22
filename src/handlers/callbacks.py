@@ -3,22 +3,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from aiogram import Bot, F, Router
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery
 
 from src.analytics import AnalyticsEmitter, AnalyticsEvent, AnalyticsEventName
-from src.game.engine import (
-    VotingResult,
-    all_players_voted,
-    build_voting_result_text,
-    finish_voting,
-    prepare_game_round,
-    send_roles,
-    speaking_order_lines,
-)
-from src.game.models import Game, GameState, Player
+from src.game.engine import all_players_voted
+from src.game.models import GameState, Player
 from src.game.provider_factory import build_content_provider
+from src.handlers.admin_actions import cancel_game, close_voting, open_voting, start_round
 from src.utils.category_labels import format_categories
-from src.utils.keyboards import lobby_keyboard, post_round_keyboard
+from src.utils.keyboards import lobby_keyboard
 
 if TYPE_CHECKING:
     from src.game.repo import GameRepo
@@ -42,57 +35,6 @@ def render_lobby_text(game_chat_id: int, players: list[Player], selected_categor
         f"Игроки:\n{players_text}\n\n"
         "Нажми Join, чтобы участвовать."
     )
-
-
-def _round_rules_text() -> str:
-    return (
-        "Каждому игроку показывается картинка с персонажем. У большинства игроков будет один и тот же персонаж, "
-        "но у одного игрока — другой. Этот игрок и есть шпион.\n\n"
-        "По очереди игроки называют факты о своём персонаже: как он выглядит, где мог появляться, какие у него "
-        "особенности, характер или ассоциации. При этом важно говорить так, чтобы не раскрыть слишком много, "
-        "но и не вызвать подозрений.\n\n"
-        "Ваша задача — понять, кто вы: мирный житель или шпион. Слушайте ответы других игроков, сравнивайте их со "
-        "своей картинкой и пытайтесь определить, кто говорит не о том персонаже.\n\n"
-        "Если вы поняли, что шпион — это вы, старайтесь подстраиваться под ответы остальных игроков, говорить "
-        "осторожно и не выдавать себя.\n\n"
-        "В конце раунда все игроки голосуют за того, кого считают шпионом. Побеждают мирные жители, если правильно "
-        "находят шпиона. Шпион побеждает, если ему удаётся остаться незамеченным."
-    )
-
-
-async def complete_round(
-    *,
-    game: Game,
-    result: VotingResult,
-    repo: GameRepo,
-    analytics_emitter: AnalyticsEmitter,
-    user_id: int,
-    responder: Message | None,
-    auto_finished: bool,
-) -> None:
-    if responder is not None:
-        await responder.answer(build_voting_result_text(game, result), reply_markup=post_round_keyboard(game.chat_id))
-
-    payload: dict[str, int | bool | None] = {
-        "votes_count": len(game.votes),
-        "voted_out_id": result.voted_out_id,
-        "is_spy_caught": result.is_spy_caught,
-        "round_duration_seconds": result.round_duration_seconds,
-    }
-    if auto_finished:
-        payload["auto_finished"] = True
-
-    analytics_emitter.emit(
-        AnalyticsEvent(
-            event_name=AnalyticsEventName.ROUND_FINISHED,
-            chat_id=game.chat_id,
-            user_id=user_id,
-            game_id=str(game.chat_id),
-            round_id=f"{game.chat_id}:1",
-            payload=payload,
-        )
-    )
-    await repo.save_game(game)
 
 
 @router.callback_query(F.data.startswith("join:"))
@@ -215,16 +157,158 @@ async def vote(callback: CallbackQuery, repo: GameRepo, analytics_emitter: Analy
     await callback.answer("Голос учтён.")
 
     if all_players_voted(game):
-        result = finish_voting(game)
-        await complete_round(
+        await close_voting(
             game=game,
-            result=result,
+            actor_id=callback.from_user.id,
             repo=repo,
             analytics_emitter=analytics_emitter,
-            user_id=callback.from_user.id,
             responder=callback.message,
             auto_finished=True,
         )
+
+
+@router.callback_query(F.data.startswith("admin:start:"))
+async def admin_start_round(
+    callback: CallbackQuery,
+    repo: GameRepo,
+    bot: Bot,
+    analytics_emitter: AnalyticsEmitter,
+) -> None:
+    if callback.from_user is None or callback.data is None:
+        return
+
+    _, _, chat_id_raw = callback.data.split(":")
+    chat_id = int(chat_id_raw)
+    game = await repo.get_game(chat_id)
+    if game is None:
+        await callback.answer("Игра не найдена.", show_alert=True)
+        return
+    if callback.from_user.id != game.admin_id:
+        await callback.answer("Только админ может запускать игру.", show_alert=True)
+        return
+    if game.state != GameState.LOBBY:
+        await callback.answer("Игру можно запустить только из лобби.", show_alert=True)
+        return
+    if len(game.players) < 3:
+        await callback.answer("Нужно минимум 3 игрока.", show_alert=True)
+        return
+
+    try:
+        result = await start_round(
+            game=game,
+            actor_id=callback.from_user.id,
+            repo=repo,
+            bot=bot,
+            analytics_emitter=analytics_emitter,
+            responder=callback.message,
+        )
+    except ValueError as exc:
+        await callback.answer(f"Не удалось начать игру: {exc}", show_alert=True)
+        return
+
+    if not result.delivered:
+        await callback.answer("Не удалось отправить роли. Проверь личку бота у игроков.", show_alert=True)
+        return
+    if result.failed and callback.message:
+        await callback.message.answer(
+            "Не всем удалось отправить роли. Проверь личку бота у игроков: "
+            + ", ".join(str(user_id) for user_id in result.failed)
+        )
+    await callback.answer("Раунд запущен.")
+
+
+@router.callback_query(F.data.startswith("admin:vote:"))
+async def admin_start_vote(
+    callback: CallbackQuery,
+    repo: GameRepo,
+    analytics_emitter: AnalyticsEmitter,
+) -> None:
+    if callback.from_user is None or callback.data is None:
+        return
+
+    _, _, chat_id_raw = callback.data.split(":")
+    chat_id = int(chat_id_raw)
+    game = await repo.get_game(chat_id)
+    if game is None:
+        await callback.answer("Игра не найдена.", show_alert=True)
+        return
+    if callback.from_user.id != game.admin_id:
+        await callback.answer("Только админ может открыть голосование.", show_alert=True)
+        return
+    if game.state != GameState.PLAYING:
+        await callback.answer("Голосование можно начать только во время раунда.", show_alert=True)
+        return
+
+    await open_voting(
+        game=game,
+        actor_id=callback.from_user.id,
+        repo=repo,
+        analytics_emitter=analytics_emitter,
+        responder=callback.message,
+    )
+    await callback.answer("Голосование открыто.")
+
+
+@router.callback_query(F.data.startswith("admin:endvote:"))
+async def admin_end_vote(
+    callback: CallbackQuery,
+    repo: GameRepo,
+    analytics_emitter: AnalyticsEmitter,
+) -> None:
+    if callback.from_user is None or callback.data is None:
+        return
+
+    _, _, chat_id_raw = callback.data.split(":")
+    chat_id = int(chat_id_raw)
+    game = await repo.get_game(chat_id)
+    if game is None:
+        await callback.answer("Игра не найдена.", show_alert=True)
+        return
+    if callback.from_user.id != game.admin_id:
+        await callback.answer("Только админ может завершить голосование.", show_alert=True)
+        return
+    if game.state != GameState.VOTING:
+        await callback.answer("Сейчас нет активного голосования.", show_alert=True)
+        return
+
+    await close_voting(
+        game=game,
+        actor_id=callback.from_user.id,
+        repo=repo,
+        analytics_emitter=analytics_emitter,
+        responder=callback.message,
+        auto_finished=False,
+    )
+    await callback.answer("Голосование завершено.")
+
+
+@router.callback_query(F.data.startswith("admin:cancel:"))
+async def admin_cancel_game(
+    callback: CallbackQuery,
+    repo: GameRepo,
+    analytics_emitter: AnalyticsEmitter,
+) -> None:
+    if callback.from_user is None or callback.data is None:
+        return
+
+    _, _, chat_id_raw = callback.data.split(":")
+    chat_id = int(chat_id_raw)
+    game = await repo.get_game(chat_id)
+    if game is None:
+        await callback.answer("Игра не найдена.", show_alert=True)
+        return
+    if callback.from_user.id != game.admin_id:
+        await callback.answer("Только админ может отменить игру.", show_alert=True)
+        return
+
+    await cancel_game(
+        game=game,
+        actor_id=callback.from_user.id,
+        repo=repo,
+        analytics_emitter=analytics_emitter,
+        responder=callback.message,
+    )
+    await callback.answer("Игра отменена.")
 
 
 @router.callback_query(F.data.startswith("postround:repeat:"))
@@ -250,45 +334,28 @@ async def repeat_round(
         await callback.answer("Раунд еще не завершен.", show_alert=True)
         return
 
-    provider = build_content_provider()
-    game.available_categories = provider.get_available_categories()
     try:
-        game = prepare_game_round(game, provider)
+        result = await start_round(
+            game=game,
+            actor_id=callback.from_user.id,
+            repo=repo,
+            bot=bot,
+            analytics_emitter=analytics_emitter,
+            responder=callback.message,
+            started_from_post_round=True,
+        )
     except ValueError as exc:
         await callback.answer(f"Не удалось начать раунд: {exc}", show_alert=True)
         return
 
-    await repo.save_game(game)
-    delivered, failed = await send_roles(bot, game, provider)
-    if not delivered:
+    if not result.delivered:
         await callback.answer("Не удалось отправить роли. Проверь личку бота у игроков.", show_alert=True)
         return
-    if failed and callback.message:
+    if result.failed and callback.message:
         await callback.message.answer(
             "Не всем удалось отправить роли. Проверь личку бота у игроков: "
-            + ", ".join(str(user_id) for user_id in failed)
+            + ", ".join(str(user_id) for user_id in result.failed)
         )
-
-    analytics_emitter.emit(
-        AnalyticsEvent(
-            event_name=AnalyticsEventName.GAME_STARTED,
-            chat_id=game.chat_id,
-            user_id=callback.from_user.id,
-            game_id=str(game.chat_id),
-            round_id=f"{game.chat_id}:1",
-            payload={
-                "players_count": len(game.players),
-                "delivered_count": len(delivered),
-                "failed_count": len(failed),
-                "selected_categories": list(game.selected_categories),
-                "started_from_post_round": True,
-            },
-        )
-    )
-    if callback.message:
-        await callback.message.answer(_round_rules_text())
-        order = "\n".join(speaking_order_lines(game))
-        await callback.message.answer(f"Порядок выступлений:\n{order}\n\nКогда закончите, запустите /vote.")
     await callback.answer("Новый раунд запущен.")
 
 

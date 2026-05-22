@@ -10,7 +10,7 @@ from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import BufferedInputFile
 
 from src.game.content import ContentProvider
-from src.game.models import Game, GameState, PayloadType
+from src.game.models import Game, GameState, PayloadType, Player
 
 
 @dataclass(slots=True)
@@ -25,10 +25,10 @@ def prepare_game_round(game: Game, content: ContentProvider) -> Game:
     if not game.players:
         raise ValueError("Game has no players")
 
-    spy = random.choice(game.players)
-    game.spy_id = spy.user_id
-    game.speaking_order = [player.user_id for player in game.players]
-    random.shuffle(game.speaking_order)
+    game.spy_id = _pick_spy_id(game.players, previous_spy_id=game.spy_id)
+    if not _is_valid_speaking_order(game.speaking_order, game.players):
+        game.speaking_order = [player.user_id for player in game.players]
+        random.shuffle(game.speaking_order)
 
     pair = content.get_random_image_pair(game.selected_categories or None, chat_id=game.chat_id)
     game.theme = pair.theme
@@ -175,3 +175,21 @@ def _round_duration_seconds(game: Game) -> int | None:
         return None
     duration = int(time() - game.round_started_at_ts)
     return max(0, duration)
+
+
+def _pick_spy_id(players: list[Player], previous_spy_id: int | None) -> int:
+    if len(players) == 1:
+        return players[0].user_id
+    candidate_ids = [player.user_id for player in players]
+    if previous_spy_id in candidate_ids:
+        candidate_ids = [user_id for user_id in candidate_ids if user_id != previous_spy_id]
+    if not candidate_ids:
+        candidate_ids = [player.user_id for player in players]
+    return random.choice(candidate_ids)
+
+
+def _is_valid_speaking_order(order: list[int], players: list[Player]) -> bool:
+    if not order:
+        return False
+    player_ids = {player.user_id for player in players}
+    return len(order) == len(players) and set(order) == player_ids
