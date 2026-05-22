@@ -2,6 +2,7 @@ CATEGORY_LABELS: dict[str, str] = {
     "adult": "Актрисы (18+)",
     "anime": "Аниме",
     "cartoons": "Мультфильмы",
+    "musicians": "Музыканты",
     "movies_series": "Кино / Сериалы",
 }
 

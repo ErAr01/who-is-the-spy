@@ -11,6 +11,7 @@ class CategoryLabelsTest(TestCase):
         self.assertEqual(category_label("adult"), "Актрисы (18+)")
         self.assertEqual(category_label("anime"), "Аниме")
         self.assertEqual(category_label("cartoons"), "Мультфильмы")
+        self.assertEqual(category_label("musicians"), "Музыканты")
         self.assertEqual(category_label("movies_series"), "Кино / Сериалы")
 
     def test_format_categories_uses_mapped_labels(self) -> None:
