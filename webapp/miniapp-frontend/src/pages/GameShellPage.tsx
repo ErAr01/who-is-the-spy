@@ -9,6 +9,7 @@ import { useGameActions } from "../hooks/useGameActions";
 import { useGamePolling } from "../hooks/useGamePolling";
 import { useHaptics } from "../hooks/useHaptics";
 import { useRole } from "../hooks/useRole";
+import { useRoundRoles } from "../hooks/useRoundRoles";
 import { useMicrointeraction } from "../hooks/useMicrointeraction";
 import { FinishedScreen } from "../screens/FinishedScreen";
 import { LobbyScreen } from "../screens/LobbyScreen";
@@ -65,6 +66,7 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
   const polling = useGamePolling(sessionToken, chatId);
   const actions = useGameActions(sessionToken, chatId, polling.refreshNow);
   const role = useRole(sessionToken, chatId, polling.snapshot?.state);
+  const roundRoles = useRoundRoles(sessionToken, chatId, polling.snapshot?.state);
 
   const shellScreen = useMemo(() => screenFromSnapshot(polling.snapshot), [polling.snapshot]);
   const reconnectedClass = useMicrointeraction(polling.connection === "fresh" && polling.error === null, "highlight");
@@ -76,7 +78,7 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
   }, [polling.connection]);
 
   useEffect(() => {
-    const combinedError = actions.actionError ?? polling.error ?? role.error;
+    const combinedError = actions.actionError ?? polling.error ?? role.error ?? roundRoles.error;
     if (!combinedError) {
       lastErrorFingerprintRef.current = null;
       return;
@@ -95,7 +97,7 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
     if (mapped.shouldLogout) {
       onSessionExpired();
     }
-  }, [actions.actionError, notify, onSessionExpired, polling.error, push, role.error]);
+  }, [actions.actionError, notify, onSessionExpired, polling.error, push, role.error, roundRoles.error]);
 
   useEffect(() => {
     if (!actions.actionNote) {
@@ -157,12 +159,12 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
       return (
         <FinishedScreen
           snapshot={snapshot}
-          role={role.role}
-          roleLoading={role.loading}
+          roundRoles={roundRoles.roundRoles}
+          roundRolesLoading={roundRoles.loading}
           pendingAction={actions.pendingAction}
-          onRevealRole={() => {
+          onRevealRoundRoles={() => {
             impact("soft");
-            void role.revealRole();
+            void roundRoles.revealRoundRoles();
           }}
           onRepeatRound={() => {
             impact("medium");
@@ -198,7 +200,7 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
     );
   };
 
-  const combinedError: ApiError | null = actions.actionError ?? polling.error ?? role.error;
+  const combinedError: ApiError | null = actions.actionError ?? polling.error ?? role.error ?? roundRoles.error;
   const playersCount = polling.snapshot?.players.length ?? 0;
   const screenSubtitle =
     shellScreen === "lobby"

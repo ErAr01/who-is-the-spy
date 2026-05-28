@@ -1,15 +1,14 @@
 import { useMemo, useState } from "react";
 
-import type { MiniAppRoleResponse, MiniAppSnapshot } from "../api/types";
+import type { MiniAppRoundRolesResponse, MiniAppSnapshot } from "../api/types";
 import { AdminActions } from "../components/AdminActions";
-import { RoleCard } from "../components/RoleCard";
 
 interface Props {
   snapshot: MiniAppSnapshot;
-  role: MiniAppRoleResponse | null;
-  roleLoading: boolean;
+  roundRoles: MiniAppRoundRolesResponse | null;
+  roundRolesLoading: boolean;
   pendingAction: string | null;
-  onRevealRole: () => void;
+  onRevealRoundRoles: () => void;
   onRepeatRound: () => void;
   onCancel: () => void;
 }
@@ -23,45 +22,71 @@ function resolvePlayerName(snapshot: MiniAppSnapshot, userId: number | null): st
 
 export function FinishedScreen({
   snapshot,
-  role,
-  roleLoading,
+  roundRoles,
+  roundRolesLoading,
   pendingAction,
-  onRevealRole,
+  onRevealRoundRoles,
   onRepeatRound,
   onCancel
 }: Props) {
-  const [showRoundResult, setShowRoundResult] = useState(false);
+  const [showCharacterRoles, setShowCharacterRoles] = useState(false);
   const spyName = useMemo(() => resolvePlayerName(snapshot, snapshot.round_spy_id), [snapshot]);
   const votedOutName = useMemo(() => resolvePlayerName(snapshot, snapshot.round_voted_out_id), [snapshot]);
-  const canRevealRoundResult = snapshot.round_spy_id !== null || snapshot.round_voted_out_id !== null;
+  const canRevealPlayerResults = snapshot.round_spy_id !== null || snapshot.round_voted_out_id !== null;
 
   return (
     <>
-      <RoleCard role={role} loading={roleLoading} onReveal={onRevealRole} />
       <section className="card">
         <h2>Итоги</h2>
         <p className="muted">Раунд завершен. Можно обсудить результат и запустить новую игру из чата.</p>
+      </section>
+      <section className="card">
+        <h2>Результаты раунда</h2>
+        {canRevealPlayerResults ? (
+          <>
+            <p>Шпионом был: <strong>{spyName}</strong></p>
+            <p>Большинство выбрало: <strong>{votedOutName}</strong></p>
+            <p>
+              {snapshot.round_is_spy_caught === true
+                ? "Мирные победили."
+                : snapshot.round_is_spy_caught === false
+                  ? "Шпион победил."
+                  : "Результат голосования недоступен."}
+            </p>
+          </>
+        ) : (
+          <p className="muted">Результаты голосования пока недоступны.</p>
+        )}
         <button
           type="button"
           className="button button-secondary"
-          onClick={() => setShowRoundResult(true)}
-          disabled={!canRevealRoundResult || showRoundResult}
+          onClick={() => {
+            if (!showCharacterRoles) {
+              void onRevealRoundRoles();
+            }
+            setShowCharacterRoles(true);
+          }}
+          disabled={roundRolesLoading || showCharacterRoles}
         >
-          {showRoundResult ? "Роли показаны" : "Показать роли"}
+          {roundRolesLoading ? "Загружаем роли..." : showCharacterRoles ? "Роли показаны" : "Показать роли"}
         </button>
       </section>
-      {showRoundResult ? (
+      {showCharacterRoles && roundRoles ? (
         <section className="card">
-          <h2>Результаты раунда</h2>
-          <p>Шпионом был: <strong>{spyName}</strong></p>
-          <p>Большинство выбрало: <strong>{votedOutName}</strong></p>
-          <p>
-            {snapshot.round_is_spy_caught === true
-              ? "Мирные победили."
-              : snapshot.round_is_spy_caught === false
-                ? "Шпион победил."
-                : "Результат голосования недоступен."}
-          </p>
+          <h2>Роли персонажей</h2>
+          <p><strong>Шпион</strong> — {roundRoles.spy.name ?? "Неизвестно"}</p>
+          {roundRoles.spy.image_url ? (
+            <img className="card-image" src={roundRoles.spy.image_url} alt={roundRoles.spy.name ?? "Шпион"} loading="lazy" />
+          ) : null}
+          <p><strong>Мирные</strong> — {roundRoles.civilian.name ?? "Неизвестно"}</p>
+          {roundRoles.civilian.image_url ? (
+            <img
+              className="card-image"
+              src={roundRoles.civilian.image_url}
+              alt={roundRoles.civilian.name ?? "Мирные"}
+              loading="lazy"
+            />
+          ) : null}
         </section>
       ) : null}
       <AdminActions
