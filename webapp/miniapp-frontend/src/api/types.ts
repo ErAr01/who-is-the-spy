@@ -32,6 +32,10 @@ export interface MiniAppSnapshot {
   selected_categories: string[];
   available_categories: string[];
   votes_count: number;
+  round_voted_out_id: number | null;
+  round_spy_id: number | null;
+  round_is_spy_caught: boolean | null;
+  round_duration_seconds: number | null;
   version: number;
   updated_at_ts: number | null;
   is_admin: boolean;

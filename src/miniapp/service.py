@@ -57,7 +57,9 @@ class GameService:
     ) -> MiniAppSnapshotResult:
         started_at = monotonic()
         game = await self._resolve_snapshot_game(chat_id=chat_id, user_id=user_id, user_name=user_name)
-        no_change = since_version is not None and game.version <= since_version
+        # Version can reset when a game is cancelled/recreated.
+        # Treat only exact equality as "no change" so clients receive fresh snapshot after reset.
+        no_change = since_version is not None and game.version == since_version
         self._analytics_emitter.emit(
             AnalyticsEvent(
                 event_name=AnalyticsEventName.MINIAPP_POLLING_LATENCY,
@@ -214,6 +216,41 @@ class GameService:
                 bot=self._bot,
                 analytics_emitter=self._analytics_emitter,
                 responder=None,
+                deliver_private_roles=False,
+            )
+            return MiniAppActionResult(version=game.version, updated_at_ts=game.updated_at_ts)
+
+    async def repeat_round(self, *, chat_id: int, user_id: int) -> MiniAppActionResult:
+        async with self._repo.chat_lock(chat_id):
+            game = await self._require_game(chat_id)
+            self._require_admin(game, user_id)
+            self._require_state(
+                game,
+                {GameState.FINISHED},
+                "repeat_forbidden_state",
+                "Новый раунд можно запустить только после завершения текущего.",
+            )
+            if self._reset_lobby_if_idle(game):
+                await self._repo.save_game(game)
+                raise MiniAppError(
+                    code="lobby_reset_due_inactivity",
+                    message="Лобби было неактивно более часа и сброшено. Игрокам нужно присоединиться заново.",
+                    status_code=409,
+                )
+            if len(game.players) < 3:
+                raise MiniAppError(
+                    code="not_enough_players",
+                    message="Нужно минимум 3 игрока.",
+                    status_code=409,
+                )
+            await start_round(
+                game=game,
+                actor_id=user_id,
+                repo=self._repo,
+                bot=self._bot,
+                analytics_emitter=self._analytics_emitter,
+                responder=None,
+                started_from_post_round=True,
                 deliver_private_roles=False,
             )
             return MiniAppActionResult(version=game.version, updated_at_ts=game.updated_at_ts)
@@ -551,6 +588,9 @@ class GameService:
                 game.spy_id = None
                 game.round_player_ids = []
                 game.votes = {}
+                game.last_voted_out_id = None
+                game.last_is_spy_caught = None
+                game.last_round_duration_seconds = None
                 game.round_started_at_ts = None
                 changed = True
 

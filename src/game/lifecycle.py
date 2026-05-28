@@ -32,6 +32,9 @@ def reset_to_fresh_lobby(game: Game, *, available_categories: list[str]) -> None
     game.civilian_search_url = None
     game.spy_search_url = None
     game.votes = {}
+    game.last_voted_out_id = None
+    game.last_is_spy_caught = None
+    game.last_round_duration_seconds = None
     game.round_started_at_ts = None
     game.selected_categories = []
     game.available_categories = available_categories

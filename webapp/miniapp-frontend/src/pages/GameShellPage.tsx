@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { mapError } from "../api/errorMap";
 import type { ApiError, MiniAppSnapshot } from "../api/types";
@@ -9,7 +9,6 @@ import { useGameActions } from "../hooks/useGameActions";
 import { useGamePolling } from "../hooks/useGamePolling";
 import { useHaptics } from "../hooks/useHaptics";
 import { useRole } from "../hooks/useRole";
-import { useRoundRoles } from "../hooks/useRoundRoles";
 import { useMicrointeraction } from "../hooks/useMicrointeraction";
 import { FinishedScreen } from "../screens/FinishedScreen";
 import { LobbyScreen } from "../screens/LobbyScreen";
@@ -26,19 +25,19 @@ interface Props {
 function useToasts() {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const push = (kind: Toast["kind"], text: string) => {
+  const push = useCallback((kind: Toast["kind"], text: string) => {
     const id = `${Date.now()}-${Math.random()}`;
     setToasts((prev) => [...prev, { id, kind, text }]);
     window.setTimeout(() => {
       setToasts((prev) => prev.filter((item) => item.id !== id));
     }, 3200);
-  };
+  }, []);
 
-  return {
-    toasts,
-    dismiss: (id: string) => setToasts((prev) => prev.filter((item) => item.id !== id)),
-    push
-  };
+  const dismiss = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  return useMemo(() => ({ toasts, dismiss, push }), [dismiss, push, toasts]);
 }
 
 function screenFromSnapshot(snapshot: MiniAppSnapshot | null): "lobby" | "playing" | "voting" | "finished" {
@@ -61,11 +60,11 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const { impact, notify } = useHaptics();
   const { toasts, dismiss, push } = useToasts();
+  const lastErrorFingerprintRef = useRef<string | null>(null);
 
   const polling = useGamePolling(sessionToken, chatId);
   const actions = useGameActions(sessionToken, chatId, polling.refreshNow);
   const role = useRole(sessionToken, chatId, polling.snapshot?.state);
-  const roundRoles = useRoundRoles(sessionToken, chatId, polling.snapshot?.state);
 
   const shellScreen = useMemo(() => screenFromSnapshot(polling.snapshot), [polling.snapshot]);
   const reconnectedClass = useMicrointeraction(polling.connection === "fresh" && polling.error === null, "highlight");
@@ -77,10 +76,17 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
   }, [polling.connection]);
 
   useEffect(() => {
-    const combinedError = actions.actionError ?? polling.error ?? role.error ?? roundRoles.error;
+    const combinedError = actions.actionError ?? polling.error ?? role.error;
     if (!combinedError) {
+      lastErrorFingerprintRef.current = null;
       return;
     }
+
+    const fingerprint = `${combinedError.code}:${combinedError.message}:${combinedError.status ?? ""}`;
+    if (lastErrorFingerprintRef.current === fingerprint) {
+      return;
+    }
+    lastErrorFingerprintRef.current = fingerprint;
 
     const mapped = mapError(combinedError);
     push("error", `${mapped.title}: ${mapped.message}`);
@@ -89,7 +95,7 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
     if (mapped.shouldLogout) {
       onSessionExpired();
     }
-  }, [actions.actionError, notify, onSessionExpired, polling.error, push, role.error, roundRoles.error]);
+  }, [actions.actionError, notify, onSessionExpired, polling.error, push, role.error]);
 
   useEffect(() => {
     if (!actions.actionNote) {
@@ -153,16 +159,14 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
           snapshot={snapshot}
           role={role.role}
           roleLoading={role.loading}
-          roundRoles={roundRoles.roundRoles}
-          roundRolesLoading={roundRoles.loading}
           pendingAction={actions.pendingAction}
           onRevealRole={() => {
             impact("soft");
             void role.revealRole();
           }}
-          onRevealRoundRoles={() => {
-            impact("soft");
-            void roundRoles.revealRoundRoles();
+          onRepeatRound={() => {
+            impact("medium");
+            void actions.repeatRound();
           }}
           onCancel={() => setShowCancelConfirm(true)}
         />
@@ -194,7 +198,7 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
     );
   };
 
-  const combinedError: ApiError | null = actions.actionError ?? polling.error ?? role.error ?? roundRoles.error;
+  const combinedError: ApiError | null = actions.actionError ?? polling.error ?? role.error;
   const playersCount = polling.snapshot?.players.length ?? 0;
   const screenSubtitle =
     shellScreen === "lobby"

@@ -9,7 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from src.analytics import AnalyticsEmitter, AnalyticsEvent, AnalyticsEventName
 from src.bot import AppContext
 from src.config import Settings
-from src.game.models import Game
+from src.game.models import Game, GameState
 from src.miniapp.auth import TelegramInitDataValidator
 from src.miniapp.dto import (
     MiniAppBaseActionRequest,
@@ -223,6 +223,23 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
             chat_id=payload.chat_id,
             user_id=claims.user_id,
             executor=lambda: context.game_service.start(chat_id=payload.chat_id, user_id=claims.user_id),
+        )
+        return _build_action_response(result)
+
+    @router.post("/round/repeat", response_model=MiniAppActionResponse)
+    async def round_repeat(
+        payload: MiniAppBaseActionRequest,
+        request: Request,
+        claims: MiniAppSessionClaims = Depends(_auth_dependency),
+    ) -> MiniAppActionResponse:
+        _ensure_chat_access(chat_id=payload.chat_id, claims=claims)
+        context = _get_context(request)
+        result = await _run_action(
+            context=context,
+            action_name="round/repeat",
+            chat_id=payload.chat_id,
+            user_id=claims.user_id,
+            executor=lambda: context.game_service.repeat_round(chat_id=payload.chat_id, user_id=claims.user_id),
         )
         return _build_action_response(result)
 
@@ -457,6 +474,10 @@ def _build_snapshot(*, game: Game, user_id: int) -> MiniAppSnapshotDataDTO:
         selected_categories=list(game.selected_categories),
         available_categories=list(game.available_categories),
         votes_count=len(game.votes),
+        round_voted_out_id=game.last_voted_out_id,
+        round_spy_id=game.spy_id if game.state == GameState.FINISHED else None,
+        round_is_spy_caught=game.last_is_spy_caught,
+        round_duration_seconds=game.last_round_duration_seconds,
         version=game.version,
         updated_at_ts=game.updated_at_ts,
         is_admin=user_id == game.admin_id,

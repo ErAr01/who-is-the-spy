@@ -51,6 +51,9 @@ class Game:
     selected_categories: list[str] = field(default_factory=list)
     available_categories: list[str] = field(default_factory=list)
     votes: dict[int, int] = field(default_factory=dict)
+    last_voted_out_id: int | None = None
+    last_is_spy_caught: bool | None = None
+    last_round_duration_seconds: int | None = None
     lobby_message_id: int | None = None
     round_started_at_ts: float | None = None
     last_activity_ts: float | None = None
@@ -87,6 +90,21 @@ class Game:
             selected_categories=[str(v) for v in payload.get("selected_categories", [])],
             available_categories=[str(v) for v in payload.get("available_categories", [])],
             votes={int(k): int(v) for k, v in payload.get("votes", {}).items()},
+            last_voted_out_id=(
+                int(payload["last_voted_out_id"])
+                if payload.get("last_voted_out_id") is not None
+                else None
+            ),
+            last_is_spy_caught=(
+                bool(payload["last_is_spy_caught"])
+                if payload.get("last_is_spy_caught") is not None
+                else None
+            ),
+            last_round_duration_seconds=(
+                int(payload["last_round_duration_seconds"])
+                if payload.get("last_round_duration_seconds") is not None
+                else None
+            ),
             lobby_message_id=payload.get("lobby_message_id"),
             round_started_at_ts=(
                 float(payload["round_started_at_ts"])

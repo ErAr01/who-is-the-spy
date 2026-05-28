@@ -158,7 +158,9 @@ body {
 
 .button:disabled {
   cursor: not-allowed;
-  opacity: 0.58;
+  opacity: 0.5;
+  filter: saturate(0.35) brightness(0.78);
+  box-shadow: none;
 }
 
 .button-primary {

@@ -75,6 +75,9 @@ async def start_round(
     try:
         game.available_categories = provider.get_available_categories()
         game = prepare_game_round(game, provider)
+        game.last_voted_out_id = None
+        game.last_is_spy_caught = None
+        game.last_round_duration_seconds = None
     except ValueError as exc:
         analytics_emitter.emit(
             AnalyticsEvent(
@@ -293,6 +296,9 @@ async def complete_round(
             payload=payload,
         )
     )
+    game.last_voted_out_id = result.voted_out_id
+    game.last_is_spy_caught = result.is_spy_caught
+    game.last_round_duration_seconds = result.round_duration_seconds
     game.round_player_ids = []
     touch_activity(game)
     await repo.save_game(game)

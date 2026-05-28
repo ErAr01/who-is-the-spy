@@ -64,6 +64,10 @@ class MiniAppSnapshotDataDTO(BaseModel):
     selected_categories: list[str]
     available_categories: list[str]
     votes_count: int
+    round_voted_out_id: int | None = None
+    round_spy_id: int | None = None
+    round_is_spy_caught: bool | None = None
+    round_duration_seconds: int | None = None
     version: int
     updated_at_ts: float | None
     is_admin: bool

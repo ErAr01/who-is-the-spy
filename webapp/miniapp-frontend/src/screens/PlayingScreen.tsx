@@ -1,6 +1,5 @@
 import type { MiniAppRoleResponse, MiniAppSnapshot } from "../api/types";
 import { AdminActions } from "../components/AdminActions";
-import { PlayersList } from "../components/PlayersList";
 import { RoleCard } from "../components/RoleCard";
 
 interface Props {
@@ -36,7 +35,6 @@ export function PlayingScreen({
         onReveal={onRevealRole}
         hiddenReason="Роль доступна только после старта раунда."
       />
-      <PlayersList players={snapshot.players} adminId={snapshot.admin_id} />
       <AdminActions
         title="Управление раундом"
         actions={[

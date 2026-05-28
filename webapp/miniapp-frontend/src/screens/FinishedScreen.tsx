@@ -1,92 +1,80 @@
-import type { MiniAppRoleResponse, MiniAppRoundRoleCard, MiniAppRoundRolesResponse, MiniAppSnapshot } from "../api/types";
+import { useMemo, useState } from "react";
+
+import type { MiniAppRoleResponse, MiniAppSnapshot } from "../api/types";
 import { AdminActions } from "../components/AdminActions";
-import { PlayersList } from "../components/PlayersList";
 import { RoleCard } from "../components/RoleCard";
 
 interface Props {
   snapshot: MiniAppSnapshot;
   role: MiniAppRoleResponse | null;
   roleLoading: boolean;
-  roundRoles: MiniAppRoundRolesResponse | null;
-  roundRolesLoading: boolean;
   pendingAction: string | null;
   onRevealRole: () => void;
-  onRevealRoundRoles: () => void;
+  onRepeatRound: () => void;
   onCancel: () => void;
 }
 
-function RoundRoleCard({ title, card }: { title: string; card: MiniAppRoundRoleCard }) {
-  return (
-    <section className="card">
-      <h3>{title}</h3>
-      {card.image_url ? <img className="card-image" src={card.image_url} alt={card.name ?? title} loading="lazy" /> : null}
-      <p>
-        <strong>{card.name ?? "Персонаж недоступен"}</strong>
-      </p>
-      {card.category_label ? <p className="hint">Категория: {card.category_label}</p> : null}
-      <div className="actions-col">
-        {card.wiki_url ? (
-          <a className="button button-secondary" href={card.wiki_url} target="_blank" rel="noreferrer">
-            Wikipedia
-          </a>
-        ) : null}
-        {card.search_url ? (
-          <a className="button button-secondary" href={card.search_url} target="_blank" rel="noreferrer">
-            Искать в Google
-          </a>
-        ) : null}
-      </div>
-    </section>
-  );
+function resolvePlayerName(snapshot: MiniAppSnapshot, userId: number | null): string {
+  if (userId === null) {
+    return "Неизвестно";
+  }
+  return snapshot.players.find((player) => player.user_id === userId)?.name ?? `id=${userId}`;
 }
 
 export function FinishedScreen({
   snapshot,
   role,
   roleLoading,
-  roundRoles,
-  roundRolesLoading,
   pendingAction,
   onRevealRole,
-  onRevealRoundRoles,
+  onRepeatRound,
   onCancel
 }: Props) {
+  const [showRoundResult, setShowRoundResult] = useState(false);
+  const spyName = useMemo(() => resolvePlayerName(snapshot, snapshot.round_spy_id), [snapshot]);
+  const votedOutName = useMemo(() => resolvePlayerName(snapshot, snapshot.round_voted_out_id), [snapshot]);
+  const canRevealRoundResult = snapshot.round_spy_id !== null || snapshot.round_voted_out_id !== null;
+
   return (
     <>
       <RoleCard role={role} loading={roleLoading} onReveal={onRevealRole} />
-      <PlayersList players={snapshot.players} adminId={snapshot.admin_id} />
       <section className="card">
         <h2>Итоги</h2>
         <p className="muted">Раунд завершен. Можно обсудить результат и запустить новую игру из чата.</p>
         <button
           type="button"
           className="button button-secondary"
-          onClick={onRevealRoundRoles}
-          disabled={roundRolesLoading || pendingAction !== null}
+          onClick={() => setShowRoundResult(true)}
+          disabled={!canRevealRoundResult || showRoundResult}
         >
-          {roundRolesLoading ? "Загружаем роли..." : "Показать роли"}
+          {showRoundResult ? "Роли показаны" : "Показать роли"}
         </button>
       </section>
-      {roundRoles ? (
-        <>
-          {roundRoles.theme ? (
-            <section className="card">
-              <h2>Тема раунда</h2>
-              <p>{roundRoles.theme}</p>
-            </section>
-          ) : null}
-          <RoundRoleCard title="Персонаж мирных жителей" card={roundRoles.civilian} />
-          <RoundRoleCard title="Персонаж шпиона" card={roundRoles.spy} />
-        </>
+      {showRoundResult ? (
+        <section className="card">
+          <h2>Результаты раунда</h2>
+          <p>Шпионом был: <strong>{spyName}</strong></p>
+          <p>Большинство выбрало: <strong>{votedOutName}</strong></p>
+          <p>
+            {snapshot.round_is_spy_caught === true
+              ? "Мирные победили."
+              : snapshot.round_is_spy_caught === false
+                ? "Шпион победил."
+                : "Результат голосования недоступен."}
+          </p>
+        </section>
       ) : null}
-      <section className="card">
-        <p className="hint">
-          Роли раунда раскрываются только по кнопке, чтобы не спойлерить обсуждение сразу после завершения голосования.
-        </p>
-      </section>
       <AdminActions
         title="Действия админа"
         actions={[
+          {
+            key: "repeat-round",
+            label: "Еще раунд",
+            primary: true,
+            disabled: !snapshot.is_admin || pendingAction !== null,
+            disabledReason: !snapshot.is_admin ? "Только админ может запустить следующий раунд" : undefined,
+            onClick: onRepeatRound
+          },
           {
             key: "cancel-game",
             label: "Сбросить игру",
