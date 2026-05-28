@@ -3,6 +3,7 @@ import type {
   MiniAppActionResponse,
   MiniAppAuthResponse,
   MiniAppRoleResponse,
+  MiniAppRoundRolesResponse,
   MiniAppSnapshotResponse,
   MiniAppTestPairResponse
 } from "./types";
@@ -31,6 +32,11 @@ export class MiniAppApiClient {
   async getRole(sessionToken: string, chatId: number): Promise<MiniAppRoleResponse> {
     const params = new URLSearchParams({ chat_id: String(chatId) });
     return this.request<MiniAppRoleResponse>(`/me/role?${params.toString()}`, { method: "GET", sessionToken });
+  }
+
+  async getRoundRoles(sessionToken: string, chatId: number): Promise<MiniAppRoundRolesResponse> {
+    const params = new URLSearchParams({ chat_id: String(chatId) });
+    return this.request<MiniAppRoundRolesResponse>(`/round/roles?${params.toString()}`, { method: "GET", sessionToken });
   }
 
   async join(sessionToken: string, chatId: number): Promise<MiniAppActionResponse> {

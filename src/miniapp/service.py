@@ -343,8 +343,7 @@ class GameService:
         role_name = game.spy_name if is_spy else game.civilian_name
         wiki_url = game.spy_wiki_url if is_spy else game.civilian_wiki_url
         category = self._resolve_role_category(payload=payload, selected_categories=game.selected_categories)
-        search_query = self._build_role_search_query(role_name=role_name, category=category)
-        search_url = build_google_search_url(search_query) if search_query else None
+        search_url = self._build_role_search_url(role_name=role_name, category=category)
         image_url = f"/api/v1/miniapp/cards/{payload}/image" if payload else None
         return {
             "has_role": payload is not None,
@@ -357,6 +356,36 @@ class GameService:
             "search_url": search_url,
             "category": category,
             "category_label": category_label(category) if category else None,
+        }
+
+    async def get_round_roles(self, *, chat_id: int, user_id: int) -> dict[str, object]:
+        game = await self._require_game(chat_id)
+        if user_id not in self._player_ids(game):
+            raise MiniAppError(
+                code="member_required",
+                message="Ты не участник этой игры.",
+                status_code=403,
+            )
+        if game.state != GameState.FINISHED:
+            raise MiniAppError(
+                code="round_roles_unavailable",
+                message="Роли можно показать только после завершения голосования.",
+                status_code=409,
+            )
+        return {
+            "theme": game.theme,
+            "civilian": self._build_round_role_card(
+                payload=game.civilian_payload,
+                role_name=game.civilian_name,
+                wiki_url=game.civilian_wiki_url,
+                selected_categories=game.selected_categories,
+            ),
+            "spy": self._build_round_role_card(
+                payload=game.spy_payload,
+                role_name=game.spy_name,
+                wiki_url=game.spy_wiki_url,
+                selected_categories=game.selected_categories,
+            ),
         }
 
     def _resolve_role_category(self, *, payload: str | None, selected_categories: list[str]) -> str | None:
@@ -385,6 +414,29 @@ class GameService:
         if not category:
             return role
         return f"{role} {category_label(category)}"
+
+    def _build_role_search_url(self, *, role_name: str | None, category: str | None) -> str | None:
+        search_query = self._build_role_search_query(role_name=role_name, category=category)
+        return build_google_search_url(search_query) if search_query else None
+
+    def _build_round_role_card(
+        self,
+        *,
+        payload: str | None,
+        role_name: str | None,
+        wiki_url: str | None,
+        selected_categories: list[str],
+    ) -> dict[str, str | None]:
+        category = self._resolve_role_category(payload=payload, selected_categories=selected_categories)
+        return {
+            "card_id": payload,
+            "name": role_name,
+            "image_url": f"/api/v1/miniapp/cards/{payload}/image" if payload else None,
+            "wiki_url": wiki_url,
+            "search_url": self._build_role_search_url(role_name=role_name, category=category),
+            "category": category,
+            "category_label": category_label(category) if category else None,
+        }
 
     async def generate_test_pair(
         self,

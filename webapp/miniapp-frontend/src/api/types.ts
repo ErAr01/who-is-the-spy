@@ -67,6 +67,22 @@ export interface MiniAppRoleResponse {
   category_label: string | null;
 }
 
+export interface MiniAppRoundRoleCard {
+  card_id: string | null;
+  name: string | null;
+  image_url: string | null;
+  wiki_url: string | null;
+  search_url: string | null;
+  category: string | null;
+  category_label: string | null;
+}
+
+export interface MiniAppRoundRolesResponse {
+  theme: string | null;
+  civilian: MiniAppRoundRoleCard;
+  spy: MiniAppRoundRoleCard;
+}
+
 export interface MiniAppTestPairCard {
   card_id: string;
   name: string;

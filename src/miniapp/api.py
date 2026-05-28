@@ -19,6 +19,8 @@ from src.miniapp.dto import (
     MiniAppErrorBody,
     MiniAppErrorResponse,
     MiniAppRoleResponse,
+    MiniAppRoundRoleCardDTO,
+    MiniAppRoundRolesResponse,
     MiniAppSnapshotDataDTO,
     MiniAppSnapshotResponse,
     MiniAppTestPairCardDTO,
@@ -312,6 +314,27 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
             executor=lambda: context.game_service.get_my_role(chat_id=chat_id, user_id=claims.user_id),
         )
         return MiniAppRoleResponse(**payload)
+
+    @router.get("/round/roles", response_model=MiniAppRoundRolesResponse)
+    async def round_roles(
+        request: Request,
+        chat_id: int = Query(...),
+        claims: MiniAppSessionClaims = Depends(_auth_dependency),
+    ) -> MiniAppRoundRolesResponse:
+        _ensure_chat_access(chat_id=chat_id, claims=claims)
+        context = _get_context(request)
+        payload = await _run_action(
+            context=context,
+            action_name="round/roles",
+            chat_id=chat_id,
+            user_id=claims.user_id,
+            executor=lambda: context.game_service.get_round_roles(chat_id=chat_id, user_id=claims.user_id),
+        )
+        return MiniAppRoundRolesResponse(
+            theme=payload["theme"],
+            civilian=MiniAppRoundRoleCardDTO(**payload["civilian"]),
+            spy=MiniAppRoundRoleCardDTO(**payload["spy"]),
+        )
 
     @router.get("/testpair", response_model=MiniAppTestPairResponse)
     async def testpair(

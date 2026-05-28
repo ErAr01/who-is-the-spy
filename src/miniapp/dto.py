@@ -105,3 +105,19 @@ class MiniAppTestPairResponse(BaseModel):
     selected_categories: list[str]
     civilian: MiniAppTestPairCardDTO
     spy: MiniAppTestPairCardDTO
+
+
+class MiniAppRoundRoleCardDTO(BaseModel):
+    card_id: str | None = None
+    name: str | None = None
+    image_url: str | None = None
+    wiki_url: str | None = None
+    search_url: str | None = None
+    category: str | None = None
+    category_label: str | None = None
+
+
+class MiniAppRoundRolesResponse(BaseModel):
+    theme: str | None = None
+    civilian: MiniAppRoundRoleCardDTO
+    spy: MiniAppRoundRoleCardDTO
