@@ -7,12 +7,13 @@ interface Props {
   snapshot: MiniAppSnapshot;
   pendingAction: string | null;
   onJoin: () => void;
+  onLeave: () => void;
   onToggleCategory: (category: string) => void;
   onStart: () => void;
   onCancel: () => void;
 }
 
-export function LobbyScreen({ snapshot, pendingAction, onJoin, onToggleCategory, onStart, onCancel }: Props) {
+export function LobbyScreen({ snapshot, pendingAction, onJoin, onLeave, onToggleCategory, onStart, onCancel }: Props) {
   const isAdmin = snapshot.is_admin;
   const isMember = snapshot.is_member;
   const waitsNextRound = isMember && !snapshot.is_in_current_round;
@@ -30,6 +31,21 @@ export function LobbyScreen({ snapshot, pendingAction, onJoin, onToggleCategory,
             {pendingAction === "join" ? "Присоединяем..." : "Присоединиться к игре"}
           </button>
           {joinDisabledReason ? <p className="hint">{joinDisabledReason}</p> : null}
+        </section>
+      ) : null}
+
+      {isMember ? (
+        <section className="card">
+          <h2>Лобби</h2>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={onLeave}
+            disabled={pendingAction === "leave" || isAdmin}
+          >
+            {pendingAction === "leave" ? "Выходим..." : "Покинуть лобби"}
+          </button>
+          {isAdmin ? <p className="hint">Админ не может выйти из лобби, пока активна эта игра.</p> : null}
         </section>
       ) : null}
 

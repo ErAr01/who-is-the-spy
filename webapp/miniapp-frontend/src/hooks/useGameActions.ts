@@ -9,6 +9,7 @@ interface UseGameActionsResult {
   actionNote: string | null;
   clearActionError: () => void;
   join: () => Promise<void>;
+  leave: () => Promise<void>;
   toggleCategory: (category: string) => Promise<void>;
   start: () => Promise<void>;
   openVoting: () => Promise<void>;
@@ -48,6 +49,7 @@ export function useGameActions(
       actionNote,
       clearActionError: () => setActionError(null),
       join: () => runAction("join", () => miniAppClient.join(sessionToken, chatId)),
+      leave: () => runAction("leave", () => miniAppClient.leave(sessionToken, chatId)),
       toggleCategory: (category: string) =>
         runAction("toggle_category", () => miniAppClient.toggleCategory(sessionToken, chatId, category)),
       start: () => runAction("start", () => miniAppClient.start(sessionToken, chatId)),

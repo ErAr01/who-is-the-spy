@@ -166,6 +166,26 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
         )
         return _build_action_response(result)
 
+    @router.post("/leave", response_model=MiniAppActionResponse)
+    async def leave(
+        request: Request,
+        payload: MiniAppBaseActionRequest,
+        claims: MiniAppSessionClaims = Depends(_auth_dependency),
+    ) -> MiniAppActionResponse:
+        _ensure_chat_access(chat_id=payload.chat_id, claims=claims)
+        context = _get_context(request)
+        result = await _run_action(
+            context=context,
+            action_name="leave",
+            chat_id=payload.chat_id,
+            user_id=claims.user_id,
+            executor=lambda: context.game_service.leave(
+                chat_id=payload.chat_id,
+                user_id=claims.user_id,
+            ),
+        )
+        return _build_action_response(result)
+
     @router.post("/categories/toggle", response_model=MiniAppActionResponse)
     async def toggle_category(
         payload: MiniAppToggleCategoryRequest,

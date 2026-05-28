@@ -236,6 +236,27 @@ class MiniAppApiIntegrationTest(TestCase):
         self.assertEqual(forbidden_toggle.status_code, 403)
         self.assertEqual(forbidden_toggle.json()["error"]["code"], "admin_required")
 
+    def test_leave_lobby_removes_member(self) -> None:
+        game = Game(
+            chat_id=702,
+            admin_id=1,
+            state=GameState.LOBBY,
+            mode=GameMode.IMAGE_DB,
+            players=[Player(user_id=1, name="Admin"), Player(user_id=4, name="User4")],
+            available_categories=["anime"],
+            selected_categories=[],
+            version=1,
+            updated_at_ts=1.0,
+        )
+        client, repo = self._build_client(game)
+        repo._started_users.update({1, 4})
+
+        headers_user4 = self._auth_headers(client, user_id=4, chat_id=702, name="User4")
+        left = client.post("/api/v1/miniapp/leave", json={"chat_id": 702}, headers=headers_user4)
+        self.assertEqual(left.status_code, 200)
+        self.assertEqual(left.json()["note_code"], "left_lobby")
+        self.assertEqual([player.user_id for player in repo.game.players], [1])
+
     def test_late_join_returns_note_and_round_membership_flag(self) -> None:
         game = Game(
             chat_id=701,

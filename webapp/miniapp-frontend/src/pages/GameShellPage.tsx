@@ -169,6 +169,10 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
           impact("light");
           void actions.join();
         }}
+        onLeave={() => {
+          impact("light");
+          void actions.leave();
+        }}
         onToggleCategory={(category) => {
           impact("light");
           void actions.toggleCategory(category);

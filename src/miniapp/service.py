@@ -108,6 +108,45 @@ class GameService:
                 )
             return MiniAppActionResult(version=game.version, updated_at_ts=game.updated_at_ts)
 
+    async def leave(self, *, chat_id: int, user_id: int) -> MiniAppActionResult:
+        async with self._repo.chat_lock(chat_id):
+            game = await self._require_game(chat_id)
+            self._require_state(
+                game,
+                {GameState.LOBBY, GameState.FINISHED},
+                "leave_forbidden_state",
+                "Покинуть лобби можно только вне активного раунда.",
+            )
+            if user_id == game.admin_id:
+                raise MiniAppError(
+                    code="admin_cannot_leave_lobby",
+                    message="Админ не может покинуть лобби. Передайте роль админа или отмените игру.",
+                    status_code=409,
+                )
+            if user_id not in self._player_ids(game):
+                return MiniAppActionResult(
+                    version=game.version,
+                    updated_at_ts=game.updated_at_ts,
+                    note_code="already_left_lobby",
+                    note_message="Вы уже не в составе лобби.",
+                )
+
+            game.players = [player for player in game.players if player.user_id != user_id]
+            game.round_player_ids = [value for value in game.round_player_ids if value != user_id]
+            game.votes = {
+                voter_id: target_id
+                for voter_id, target_id in game.votes.items()
+                if voter_id != user_id and target_id != user_id
+            }
+            touch_activity(game)
+            await self._repo.save_game(game)
+            return MiniAppActionResult(
+                version=game.version,
+                updated_at_ts=game.updated_at_ts,
+                note_code="left_lobby",
+                note_message="Вы покинули лобби.",
+            )
+
     async def toggle_category(self, *, chat_id: int, user_id: int, category: str) -> MiniAppActionResult:
         async with self._repo.chat_lock(chat_id):
             game = await self._require_game(chat_id)

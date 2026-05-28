@@ -37,6 +37,10 @@ export class MiniAppApiClient {
     return this.action("/join", sessionToken, chatId);
   }
 
+  async leave(sessionToken: string, chatId: number): Promise<MiniAppActionResponse> {
+    return this.action("/leave", sessionToken, chatId);
+  }
+
   async toggleCategory(sessionToken: string, chatId: number, category: string): Promise<MiniAppActionResponse> {
     return this.request<MiniAppActionResponse>("/categories/toggle", {
       method: "POST",
