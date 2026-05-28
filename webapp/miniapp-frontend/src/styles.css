@@ -266,7 +266,8 @@ select:focus-visible {
 
 .chip-button.active {
   background: color-mix(in oklab, var(--button) 30%, var(--surface-soft) 70%);
-  border-color: rgb(255 255 255 / 30%);
+  border: 2px solid rgb(255 255 255 / 92%);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 20%);
 }
 
 .chip-button:hover:enabled {
