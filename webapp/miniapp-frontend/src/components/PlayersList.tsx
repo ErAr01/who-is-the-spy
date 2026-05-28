@@ -22,11 +22,13 @@ export function PlayersList({ players, adminId, canManage, pending, onRequestKic
             ) : canManage ? (
               <button
                 type="button"
-                className="button button-secondary list-inline-button"
+                className="list-remove-button"
                 disabled={pending}
                 onClick={() => onRequestKick(player)}
+                aria-label={`Удалить игрока ${player.name}`}
+                title="Удалить игрока"
               >
-                Удалить
+                −
               </button>
             ) : null}
           </li>

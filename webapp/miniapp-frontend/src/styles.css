@@ -119,11 +119,40 @@ body {
   border-bottom: 0;
 }
 
-.list-inline-button {
-  width: auto;
-  min-height: 34px;
-  padding: 6px 12px;
-  font-size: 13px;
+.list-remove-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgb(243 78 115 / 65%);
+  background: rgb(243 78 115 / 20%);
+  color: #ff8ea7;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform var(--transition-base),
+    background-color var(--transition-base),
+    border-color var(--transition-base),
+    opacity var(--transition-base);
+}
+
+.list-remove-button:hover:enabled {
+  transform: translateY(-1px);
+  background: rgb(243 78 115 / 28%);
+  border-color: rgb(243 78 115 / 85%);
+}
+
+.list-remove-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.list-remove-button:focus-visible {
+  outline: 2px solid rgb(243 78 115 / 90%);
+  outline-offset: 2px;
 }
 
 .button {
