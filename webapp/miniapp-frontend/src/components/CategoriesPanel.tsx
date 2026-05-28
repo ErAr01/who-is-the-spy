@@ -1,3 +1,5 @@
+import { categoryLabel } from "../utils/categoryLabels";
+
 interface Props {
   available: string[];
   selected: string[];
@@ -25,7 +27,7 @@ export function CategoriesPanel({ available, selected, canEdit, disabledReason, 
               title={!canEdit ? disabledReason : undefined}
               onClick={() => onToggle(category)}
             >
-              {category}
+              {categoryLabel(category)}
             </button>
           );
         })}

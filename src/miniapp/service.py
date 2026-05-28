@@ -9,7 +9,7 @@ from src.analytics import AnalyticsEmitter, AnalyticsEvent, AnalyticsEventName
 from src.config import Settings, get_settings
 from src.game.engine import build_google_search_url
 from src.game.lifecycle import is_lobby_expired, reset_to_fresh_lobby, touch_activity
-from src.game.models import Game, GameState, Player
+from src.game.models import Game, GameMode, GameState, Player
 from src.game.provider_factory import build_content_provider
 from src.handlers.admin_actions import cancel_game, close_voting, open_voting, start_round
 from src.miniapp.errors import MiniAppError
@@ -43,9 +43,16 @@ class GameService:
         self._analytics_emitter = analytics_emitter
         self._settings = settings or get_settings()
 
-    async def get_snapshot(self, *, chat_id: int, user_id: int, since_version: int | None) -> MiniAppSnapshotResult:
+    async def get_snapshot(
+        self,
+        *,
+        chat_id: int,
+        user_id: int,
+        user_name: str,
+        since_version: int | None,
+    ) -> MiniAppSnapshotResult:
         started_at = monotonic()
-        game = await self._require_game(chat_id)
+        game = await self._resolve_snapshot_game(chat_id=chat_id, user_id=user_id, user_name=user_name)
         no_change = since_version is not None and game.version <= since_version
         self._analytics_emitter.emit(
             AnalyticsEvent(
@@ -355,6 +362,79 @@ class GameService:
                 status_code=404,
             )
         return game
+
+    async def _resolve_snapshot_game(self, *, chat_id: int, user_id: int, user_name: str) -> Game:
+        if chat_id == user_id:
+            return await self._require_game(chat_id)
+
+        async with self._repo.chat_lock(chat_id):
+            game = await self._repo.get_game(chat_id)
+            if game is None:
+                provider = build_content_provider(self._settings)
+                admin_id = await self._resolve_group_admin_id(chat_id=chat_id, fallback_user_id=user_id)
+                players: list[Player] = []
+                if await self._repo.has_user_started(user_id):
+                    players.append(Player(user_id=user_id, name=user_name))
+                game = Game(
+                    chat_id=chat_id,
+                    admin_id=admin_id,
+                    state=GameState.LOBBY,
+                    mode=GameMode.IMAGE_DB,
+                    players=players,
+                    available_categories=provider.get_available_categories(),
+                )
+                touch_activity(game)
+                await self._repo.save_game(game)
+                self._analytics_emitter.emit(
+                    AnalyticsEvent(
+                        event_name=AnalyticsEventName.GAME_CREATED,
+                        chat_id=chat_id,
+                        user_id=user_id,
+                        game_id=str(chat_id),
+                        payload={"source": "miniapp_auto_create", "players_count": len(players)},
+                    )
+                )
+                return game
+
+            if game.state in {GameState.LOBBY, GameState.FINISHED} and is_lobby_expired(
+                game, idle_seconds=self._settings.lobby_idle_reset_seconds
+            ):
+                provider = build_content_provider(self._settings)
+                reset_to_fresh_lobby(game, available_categories=provider.get_available_categories())
+                await self._repo.save_game(game)
+
+            return game
+
+    async def _resolve_group_admin_id(self, *, chat_id: int, fallback_user_id: int) -> int:
+        try:
+            requester = await self._bot.get_chat_member(chat_id, fallback_user_id)
+            if requester.status in {"creator", "administrator"}:
+                return fallback_user_id
+        except Exception:
+            pass
+
+        try:
+            admins = await self._bot.get_chat_administrators(chat_id)
+            for member in admins:
+                user = getattr(member, "user", None)
+                status = getattr(member, "status", None)
+                user_id = getattr(user, "id", None)
+                if user_id is None:
+                    continue
+                if status == "creator":
+                    return int(user_id)
+            for member in admins:
+                user = getattr(member, "user", None)
+                status = getattr(member, "status", None)
+                user_id = getattr(user, "id", None)
+                if user_id is None:
+                    continue
+                if status == "administrator":
+                    return int(user_id)
+        except Exception:
+            pass
+
+        return fallback_user_id
 
     @staticmethod
     def _require_admin(game: Game, user_id: int) -> None:

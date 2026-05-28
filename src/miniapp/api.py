@@ -125,6 +125,7 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
         snapshot = await context.game_service.get_snapshot(
             chat_id=chat_id,
             user_id=claims.user_id,
+            user_name=claims.name,
             since_version=since_version,
         )
         game = snapshot.game

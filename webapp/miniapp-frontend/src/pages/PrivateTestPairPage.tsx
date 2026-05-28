@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { mapError } from "../api/errorMap";
 import { miniAppClient } from "../api/miniappClient";
 import type { ApiError, MiniAppTestPairResponse } from "../api/types";
+import { categoryLabel } from "../utils/categoryLabels";
 
 interface Props {
   sessionToken: string;
@@ -73,7 +74,7 @@ export function PrivateTestPairPage({ sessionToken, onSessionExpired }: Props) {
                 onClick={() => toggleCategory(category)}
                 disabled={pending}
               >
-                {category}
+                {categoryLabel(category)}
               </button>
             ))}
           </div>

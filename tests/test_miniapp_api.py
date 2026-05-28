@@ -8,7 +8,7 @@ from time import time
 from types import SimpleNamespace
 from urllib.parse import urlencode
 from unittest import TestCase
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from fastapi.testclient import TestClient
 
@@ -70,7 +70,11 @@ class MiniAppApiIntegrationTest(TestCase):
             MINIAPP_INIT_DATA_TTL_SECONDS=300,
             MINIAPP_SESSION_TTL_SECONDS=900,
         )
-        app_context = SimpleNamespace(bot=Mock(), redis_repo=repo)
+        bot = SimpleNamespace(
+            get_chat_member=AsyncMock(return_value=SimpleNamespace(status="administrator")),
+            get_chat_administrators=AsyncMock(return_value=[]),
+        )
+        app_context = SimpleNamespace(bot=bot, redis_repo=repo)
         app = build_miniapp_api(settings=settings, app_context=app_context, analytics_emitter=Mock())
         return TestClient(app), repo
 
@@ -115,6 +119,56 @@ class MiniAppApiIntegrationTest(TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertTrue(second.json()["no_change"])
         self.assertIsNone(second.json()["snapshot"])
+
+    def test_group_snapshot_auto_creates_lobby_when_game_missing(self) -> None:
+        seed_game = Game(
+            chat_id=999,
+            admin_id=1,
+            state=GameState.LOBBY,
+            mode=GameMode.IMAGE_DB,
+            players=[],
+            version=1,
+            updated_at_ts=1.0,
+        )
+        client, repo = self._build_client(seed_game)
+        repo.game = None
+        repo._started_users.add(4)
+
+        headers = self._auth_headers(client, user_id=4, chat_id=-500, name="User4")
+        snapshot = client.get("/api/v1/miniapp/game", params={"chat_id": -500}, headers=headers)
+        self.assertEqual(snapshot.status_code, 200)
+        payload = snapshot.json()["snapshot"]
+        self.assertEqual(payload["state"], "lobby")
+        self.assertTrue(payload["is_member"])
+        self.assertEqual(payload["admin_id"], 4)
+
+    def test_group_snapshot_uses_existing_group_admin_when_requester_not_admin(self) -> None:
+        seed_game = Game(
+            chat_id=999,
+            admin_id=1,
+            state=GameState.LOBBY,
+            mode=GameMode.IMAGE_DB,
+            players=[],
+            version=1,
+            updated_at_ts=1.0,
+        )
+        client, repo = self._build_client(seed_game)
+        repo.game = None
+        repo._started_users.add(4)
+        bot = client.app.state.miniapp.game_service._bot
+        bot.get_chat_member = AsyncMock(return_value=SimpleNamespace(status="member"))
+        bot.get_chat_administrators = AsyncMock(
+            return_value=[
+                SimpleNamespace(status="administrator", user=SimpleNamespace(id=77)),
+                SimpleNamespace(status="creator", user=SimpleNamespace(id=88)),
+            ]
+        )
+
+        headers = self._auth_headers(client, user_id=4, chat_id=-600, name="User4")
+        snapshot = client.get("/api/v1/miniapp/game", params={"chat_id": -600}, headers=headers)
+        self.assertEqual(snapshot.status_code, 200)
+        payload = snapshot.json()["snapshot"]
+        self.assertEqual(payload["admin_id"], 88)
 
     def test_join_and_role_secrecy(self) -> None:
         game = Game(
