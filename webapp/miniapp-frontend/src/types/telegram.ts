@@ -3,7 +3,7 @@ export type TelegramHapticImpactStyle = "light" | "medium" | "heavy" | "rigid" |
 export interface TelegramWebApp {
   initData: string;
   initDataUnsafe?: {
-    chat?: { id?: number };
+    chat?: { id?: number; type?: string };
     user?: { id?: number };
     start_param?: string;
   };

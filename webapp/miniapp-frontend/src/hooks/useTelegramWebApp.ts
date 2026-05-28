@@ -28,6 +28,7 @@ export interface TelegramContext {
   initData: string;
   chatId: number | null;
   mode: string | null;
+  isPrivateChat: boolean;
 }
 
 export function useTelegramWebApp(): TelegramContext {
@@ -38,16 +39,21 @@ export function useTelegramWebApp(): TelegramContext {
       webApp.expand();
     }
 
+    const chatId =
+      parseChatIdFromSearch() ??
+      webApp?.initDataUnsafe?.chat?.id ??
+      parseChatIdFromStartParam(webApp?.initDataUnsafe?.start_param) ??
+      webApp?.initDataUnsafe?.user?.id ??
+      null;
+    const userId = webApp?.initDataUnsafe?.user?.id ?? null;
+    const chatType = webApp?.initDataUnsafe?.chat?.type;
+
     return {
       webApp,
       initData: webApp?.initData ?? "",
-      chatId:
-        parseChatIdFromSearch() ??
-        webApp?.initDataUnsafe?.chat?.id ??
-        parseChatIdFromStartParam(webApp?.initDataUnsafe?.start_param) ??
-        webApp?.initDataUnsafe?.user?.id ??
-        null,
-      mode: new URLSearchParams(window.location.search).get("mode")
+      chatId,
+      mode: new URLSearchParams(window.location.search).get("mode"),
+      isPrivateChat: chatType === "private" || (chatId !== null && userId !== null && chatId === userId)
     };
   }, []);
 }

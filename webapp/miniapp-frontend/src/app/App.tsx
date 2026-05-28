@@ -7,6 +7,7 @@ import { useTelegramWebApp } from "../hooks/useTelegramWebApp";
 export function App() {
   const telegram = useTelegramWebApp();
   const auth = useMiniAppAuth(telegram.initData, telegram.chatId);
+  const isPrivateTestPairMode = telegram.mode === "testpair" || telegram.isPrivateChat;
 
   if (!auth.session || auth.status !== "ready") {
     return (
@@ -33,7 +34,7 @@ export function App() {
   }
 
   return (
-    telegram.mode === "testpair" ? (
+    isPrivateTestPairMode ? (
       <PrivateTestPairPage sessionToken={auth.session.token} onSessionExpired={auth.logout} />
     ) : (
       <GameShellPage
