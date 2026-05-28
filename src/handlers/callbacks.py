@@ -14,7 +14,7 @@ from src.game.provider_factory import build_content_provider
 from src.handlers.admin_actions import cancel_game, close_voting, open_voting, start_round
 from src.utils.category_labels import format_categories
 from src.utils.keyboards import lobby_keyboard
-from src.utils.miniapp_links import build_miniapp_chat_url
+from src.utils.miniapp_links import build_miniapp_chat_url, build_telegram_miniapp_deeplink
 
 if TYPE_CHECKING:
     from src.game.repo import GameRepo
@@ -80,7 +80,7 @@ async def join_game(
             )
         )
 
-    miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, game.chat_id)
+    miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=callback.bot.username, chat_id=game.chat_id)
     if callback.message and game.state == GameState.LOBBY:
         await callback.message.edit_text(
             render_lobby_text(game.chat_id, game.players, game.selected_categories),
@@ -136,7 +136,7 @@ async def toggle_category(
             payload={"category": category, "selected_categories": list(game.selected_categories)},
         )
     )
-    miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, game.chat_id)
+    miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=callback.bot.username, chat_id=game.chat_id)
     if callback.message:
         await callback.message.edit_text(
             render_lobby_text(game.chat_id, game.players, game.selected_categories),
@@ -222,7 +222,11 @@ async def admin_start_round(
         return
     if await _reset_lobby_if_idle(game=game, repo=repo, settings=settings):
         if callback.message:
-            miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, game.chat_id)
+            miniapp_url = _build_group_miniapp_url(
+                settings=settings,
+                bot_username=callback.bot.username,
+                chat_id=game.chat_id,
+            )
             await callback.message.answer(
                 "Лобби было неактивно более часа и сброшено. Игрокам нужно присоединиться заново.",
                 reply_markup=lobby_keyboard(
@@ -381,7 +385,11 @@ async def repeat_round(
         return
     if await _reset_lobby_if_idle(game=game, repo=repo, settings=settings):
         if callback.message:
-            miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, game.chat_id)
+            miniapp_url = _build_group_miniapp_url(
+                settings=settings,
+                bot_username=callback.bot.username,
+                chat_id=game.chat_id,
+            )
             await callback.message.answer(
                 "Лобби было неактивно более часа и сброшено. Игрокам нужно присоединиться заново.",
                 reply_markup=lobby_keyboard(
@@ -460,7 +468,7 @@ async def choose_new_categories(callback: CallbackQuery, repo: GameRepo, setting
     await repo.save_game(game)
 
     if callback.message:
-        miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, game.chat_id)
+        miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=callback.bot.username, chat_id=game.chat_id)
         await callback.message.answer(
             render_lobby_text(game.chat_id, game.players, game.selected_categories),
             reply_markup=lobby_keyboard(
@@ -480,3 +488,11 @@ async def _reset_lobby_if_idle(*, game: Game, repo: GameRepo, settings: Settings
     reset_to_fresh_lobby(game, available_categories=provider.get_available_categories())
     await repo.save_game(game)
     return True
+
+
+def _build_group_miniapp_url(*, settings: Settings, bot_username: str | None, chat_id: int) -> str | None:
+    return build_telegram_miniapp_deeplink(
+        bot_username=bot_username,
+        short_name=settings.miniapp_short_name,
+        chat_id=chat_id,
+    ) or build_miniapp_chat_url(settings.miniapp_public_url, chat_id)

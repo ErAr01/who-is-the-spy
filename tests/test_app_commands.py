@@ -12,9 +12,10 @@ class AppCommandsTest(IsolatedAsyncioTestCase):
     async def test_group_app_command_sends_url_button(self) -> None:
         message = SimpleNamespace(
             chat=SimpleNamespace(id=-100555),
+            bot=SimpleNamespace(username="who_is_spy_game_bot"),
             answer=AsyncMock(),
         )
-        settings = SimpleNamespace(miniapp_public_url="https://example.sslip.io")
+        settings = SimpleNamespace(miniapp_public_url="https://example.sslip.io", miniapp_short_name="app")
 
         await open_group_miniapp(message, settings)
 
@@ -22,14 +23,17 @@ class AppCommandsTest(IsolatedAsyncioTestCase):
         kwargs = message.answer.await_args.kwargs
         self.assertIn("reply_markup", kwargs)
         keyboard = kwargs["reply_markup"]
-        self.assertEqual(keyboard.inline_keyboard[0][0].url, "https://example.sslip.io?chat_id=-100555")
+        self.assertEqual(
+            keyboard.inline_keyboard[0][0].url,
+            "https://t.me/who_is_spy_game_bot/app?startapp=chat_-100555",
+        )
 
     async def test_private_app_command_uses_testpair_mode(self) -> None:
         message = SimpleNamespace(
             from_user=SimpleNamespace(id=42),
             answer=AsyncMock(),
         )
-        settings = SimpleNamespace(miniapp_public_url="https://example.sslip.io")
+        settings = SimpleNamespace(miniapp_public_url="https://example.sslip.io", miniapp_short_name="app")
 
         await open_private_miniapp(message, settings)
 

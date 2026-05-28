@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     miniapp_host: str = Field(default="0.0.0.0", alias="MINIAPP_HOST")
     miniapp_port: int = Field(default=8000, alias="MINIAPP_PORT")
     miniapp_public_url: str | None = Field(default=None, alias="MINIAPP_PUBLIC_URL")
+    miniapp_short_name: str = Field(default="app", alias="MINIAPP_SHORT_NAME")
     miniapp_init_data_ttl_seconds: int = Field(default=300, alias="MINIAPP_INIT_DATA_TTL_SECONDS")
     miniapp_session_ttl_seconds: int = Field(default=900, alias="MINIAPP_SESSION_TTL_SECONDS")
     miniapp_session_secret: SecretStr | None = Field(default=None, alias="MINIAPP_SESSION_SECRET")

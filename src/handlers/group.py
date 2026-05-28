@@ -15,7 +15,7 @@ from src.game.models import Game, GameMode, GameState, Player
 from src.game.provider_factory import build_content_provider
 from src.handlers.callbacks import render_lobby_text
 from src.utils.keyboards import lobby_keyboard, miniapp_open_keyboard_with_mode
-from src.utils.miniapp_links import build_miniapp_chat_url
+from src.utils.miniapp_links import build_miniapp_chat_url, build_telegram_miniapp_deeplink
 
 if TYPE_CHECKING:
     from src.game.repo import GameRepo
@@ -54,7 +54,7 @@ async def new_game(
     )
     touch_activity(game)
 
-    miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, game.chat_id)
+    miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=message.bot.username, chat_id=game.chat_id)
     lobby_message = await message.answer(
         render_lobby_text(game.chat_id, game.players, game.selected_categories),
         reply_markup=lobby_keyboard(
@@ -202,7 +202,7 @@ async def cancel_game(message: Message, repo: GameRepo, analytics_emitter: Analy
 
 @router.message(Command("app"))
 async def open_group_miniapp(message: Message, settings: Settings) -> None:
-    miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, message.chat.id)
+    miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=message.bot.username, chat_id=message.chat.id)
     if not miniapp_url:
         await message.answer("Mini App URL не настроен. Заполните MINIAPP_PUBLIC_URL в .env.")
         return
@@ -219,3 +219,11 @@ async def _reset_lobby_if_idle(*, game: Game, repo: GameRepo, settings: Settings
     reset_to_fresh_lobby(game, available_categories=provider.get_available_categories())
     await repo.save_game(game)
     return True
+
+
+def _build_group_miniapp_url(*, settings: Settings, bot_username: str | None, chat_id: int) -> str | None:
+    return build_telegram_miniapp_deeplink(
+        bot_username=bot_username,
+        short_name=settings.miniapp_short_name,
+        chat_id=chat_id,
+    ) or build_miniapp_chat_url(settings.miniapp_public_url, chat_id)

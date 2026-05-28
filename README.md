@@ -119,6 +119,7 @@ MINIAPP_ENABLED=true
 MINIAPP_HOST=0.0.0.0
 MINIAPP_PORT=8000
 MINIAPP_PUBLIC_URL=https://example.sslip.io
+MINIAPP_SHORT_NAME=app
 MINIAPP_INIT_DATA_TTL_SECONDS=300
 MINIAPP_SESSION_TTL_SECONDS=900
 MINIAPP_SESSION_SECRET=replace_with_strong_secret
@@ -140,7 +141,7 @@ python -m src.main
 - Для long-poll клиента Mini App поддержан протокол `since_version` + `no_change` в `GET /game`.
 - Если задан `MINIAPP_PUBLIC_URL`, бот добавляет в групповое лобби кнопку `📱 Открыть Mini App` и автоматически передаёт `chat_id` в query-параметре URL.
 - Команда `/app`:
-  - в группе открывает Mini App с `chat_id=<group_chat_id>`;
+  - в группе открывает Mini App через Telegram deep link (`t.me/<bot>/<short_name>?startapp=chat_<group_chat_id>`);
   - в личке открывает Mini App в режиме `mode=testpair` с `chat_id=<user_id>`.
 - Если после последнего игрового действия прошло более `LOBBY_IDLE_RESET_SECONDS` (по умолчанию 3600 сек), следующий старт раунда сбрасывает лобби: игрокам нужно заново нажать `Join`.
 

@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from src.utils.miniapp_links import build_miniapp_chat_url
+from src.utils.miniapp_links import build_miniapp_chat_url, build_telegram_miniapp_deeplink
 
 
 class MiniAppLinksTest(TestCase):
@@ -24,4 +24,14 @@ class MiniAppLinksTest(TestCase):
         self.assertEqual(
             build_miniapp_chat_url("https://example.sslip.io/path?foo=1", 321, mode="testpair"),
             "https://example.sslip.io/path?foo=1&chat_id=321&mode=testpair",
+        )
+
+    def test_builds_telegram_miniapp_deeplink(self) -> None:
+        self.assertEqual(
+            build_telegram_miniapp_deeplink(
+                bot_username="@who_is_spy_game_bot",
+                short_name="app",
+                chat_id=-5196715372,
+            ),
+            "https://t.me/who_is_spy_game_bot/app?startapp=chat_-5196715372",
         )
