@@ -4,6 +4,7 @@ export interface TelegramWebApp {
   initData: string;
   initDataUnsafe?: {
     chat?: { id?: number };
+    user?: { id?: number };
     start_param?: string;
   };
   ready(): void;
