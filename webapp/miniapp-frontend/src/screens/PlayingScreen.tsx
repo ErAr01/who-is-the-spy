@@ -10,6 +10,7 @@ interface Props {
   pendingAction: string | null;
   onRevealRole: () => void;
   onOpenVoting: () => void;
+  onCancel: () => void;
 }
 
 export function PlayingScreen({
@@ -18,7 +19,8 @@ export function PlayingScreen({
   roleLoading,
   pendingAction,
   onRevealRole,
-  onOpenVoting
+  onOpenVoting,
+  onCancel
 }: Props) {
   return (
     <>
@@ -39,6 +41,13 @@ export function PlayingScreen({
             disabled: !snapshot.is_admin || pendingAction !== null,
             disabledReason: !snapshot.is_admin ? "Только админ может открыть голосование" : undefined,
             onClick: onOpenVoting
+          },
+          {
+            key: "cancel",
+            label: "Отменить игру",
+            disabled: !snapshot.is_admin || pendingAction !== null,
+            disabledReason: !snapshot.is_admin ? "Доступно только админу" : undefined,
+            onClick: onCancel
           }
         ]}
       />

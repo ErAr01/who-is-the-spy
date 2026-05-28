@@ -396,11 +396,28 @@ class GameService:
                 )
                 return game
 
+            changed = False
+            resolved_admin_id = await self._resolve_group_admin_id(chat_id=chat_id, fallback_user_id=game.admin_id)
+            if resolved_admin_id != game.admin_id:
+                game.admin_id = resolved_admin_id
+                changed = True
+
+            if self._is_broken_round_state(game):
+                game.state = GameState.LOBBY
+                game.spy_id = None
+                game.round_player_ids = []
+                game.votes = {}
+                game.round_started_at_ts = None
+                changed = True
+
             if game.state in {GameState.LOBBY, GameState.FINISHED} and is_lobby_expired(
                 game, idle_seconds=self._settings.lobby_idle_reset_seconds
             ):
                 provider = build_content_provider(self._settings)
                 reset_to_fresh_lobby(game, available_categories=provider.get_available_categories())
+                changed = True
+
+            if changed:
                 await self._repo.save_game(game)
 
             return game
@@ -464,3 +481,14 @@ class GameService:
             seen.add(cleaned)
             normalized.append(cleaned)
         return normalized
+
+    @staticmethod
+    def _is_broken_round_state(game: Game) -> bool:
+        if game.state not in {GameState.PLAYING, GameState.VOTING}:
+            return False
+        return (
+            game.spy_id is None
+            or game.civilian_payload is None
+            or game.spy_payload is None
+            or game.round_started_at_ts is None
+        )

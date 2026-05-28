@@ -122,6 +122,7 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
             impact("medium");
             void actions.openVoting();
           }}
+          onCancel={() => setShowCancelConfirm(true)}
         />
       );
     }
