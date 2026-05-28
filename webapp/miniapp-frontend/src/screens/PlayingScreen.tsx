@@ -24,6 +24,12 @@ export function PlayingScreen({
 }: Props) {
   return (
     <>
+      <section className="card turn-order-reminder">
+        <p className="hint">
+          Вы можете определить порядок хода самостоятельно, но если среди вас есть игрок по имени Даша, то она
+          ходит первой.
+        </p>
+      </section>
       <RoleCard
         role={role}
         loading={roleLoading}

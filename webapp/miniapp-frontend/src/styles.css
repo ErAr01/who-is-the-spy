@@ -304,6 +304,13 @@ select:focus-visible {
   white-space: pre-line;
 }
 
+.turn-order-reminder {
+  padding: var(--space-2) var(--space-3);
+  border-color: rgb(255 255 255 / 12%);
+  background:
+    linear-gradient(160deg, color-mix(in oklab, var(--surface-soft) 90%, white 10%), var(--surface));
+}
+
 .card-image {
   width: 100%;
   display: block;

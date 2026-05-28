@@ -84,6 +84,11 @@ class MiniAppRoleResponse(BaseModel):
     role_name: str | None = None
     payload_type: str | None = None
     payload: str | None = None
+    image_url: str | None = None
+    wiki_url: str | None = None
+    search_url: str | None = None
+    category: str | None = None
+    category_label: str | None = None
 
 
 class MiniAppTestPairCardDTO(BaseModel):

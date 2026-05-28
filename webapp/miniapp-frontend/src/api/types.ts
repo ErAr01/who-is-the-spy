@@ -60,6 +60,11 @@ export interface MiniAppRoleResponse {
   role_name: string | null;
   payload_type: string | null;
   payload: string | null;
+  image_url: string | null;
+  wiki_url: string | null;
+  search_url: string | null;
+  category: string | null;
+  category_label: string | null;
 }
 
 export interface MiniAppTestPairCard {

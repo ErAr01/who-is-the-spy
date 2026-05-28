@@ -69,6 +69,7 @@ async def start_round(
     analytics_emitter: AnalyticsEmitter,
     responder: Message | None,
     started_from_post_round: bool = False,
+    deliver_private_roles: bool = False,
 ) -> StartRoundResult:
     provider = build_content_provider()
     try:
@@ -98,20 +99,26 @@ async def start_round(
         raise
 
     await repo.save_game(game)
-    try:
-        delivered, failed = await send_roles(bot, game, provider)
-    except Exception as exc:
-        analytics_emitter.emit(
-            AnalyticsEvent(
-                event_name=AnalyticsEventName.ROLE_DELIVERY_FAILED,
-                chat_id=game.chat_id,
-                user_id=actor_id,
-                game_id=str(game.chat_id),
-                round_id=f"{game.chat_id}:1",
-                payload={"error": str(exc), "exception_type": type(exc).__name__},
+    delivered: list[int]
+    failed: list[int]
+    if deliver_private_roles:
+        try:
+            delivered, failed = await send_roles(bot, game, provider)
+        except Exception as exc:
+            analytics_emitter.emit(
+                AnalyticsEvent(
+                    event_name=AnalyticsEventName.ROLE_DELIVERY_FAILED,
+                    chat_id=game.chat_id,
+                    user_id=actor_id,
+                    game_id=str(game.chat_id),
+                    round_id=f"{game.chat_id}:1",
+                    payload={"error": str(exc), "exception_type": type(exc).__name__},
+                )
             )
-        )
-        raise
+            raise
+    else:
+        delivered = current_round_player_ids(game)
+        failed = []
 
     if not delivered:
         analytics_emitter.emit(
