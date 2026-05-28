@@ -14,8 +14,16 @@ export function AuthGatePage({ loading, error, hasTelegramContext, hasChatId, on
 
   return (
     <main className="page auth-page">
+      <section className="card page-hero">
+        <p className="page-kicker">Who is the Spy</p>
+        <h1 className="page-title">Вход в мини-апп</h1>
+        <p className="page-subtitle">
+          Привязываем сессию к Telegram, чтобы безопасно открыть игровой интерфейс и сохранить ваш прогресс.
+        </p>
+      </section>
+
       <section className="card">
-        <h1>Who is the Spy</h1>
+        <h2>Проверка окружения</h2>
         {loading ? <p>Проверяем Telegram-сессию...</p> : null}
 
         {!hasTelegramContext ? (
@@ -34,7 +42,7 @@ export function AuthGatePage({ loading, error, hasTelegramContext, hasChatId, on
           </div>
         ) : null}
 
-        <button type="button" className="button button-primary" onClick={onRetry} disabled={loading}>
+        <button type="button" className="button button-primary" onClick={onRetry} disabled={loading} aria-busy={loading}>
           {loading ? "Авторизуем..." : "Повторить авторизацию"}
         </button>
       </section>

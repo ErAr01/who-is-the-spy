@@ -51,14 +51,20 @@ export function PrivateTestPairPage({ sessionToken, onSessionExpired }: Props) {
 
   return (
     <main className="page">
-      <section className="card">
-        <h1>Тестовая пара карточек</h1>
-        <p className="muted">
+      <section className="card page-hero">
+        <p className="page-kicker">Режим теста</p>
+        <h1 className="page-title">Тестовая пара карточек</h1>
+        <p className="page-subtitle">
           Этот режим работает в личке и позволяет быстро проверить пары «мирный/шпион» без запуска полноценного раунда.
         </p>
-        <button type="button" className="button button-primary" onClick={() => void generate()} disabled={pending}>
+        <button type="button" className="button button-primary" onClick={() => void generate()} disabled={pending} aria-busy={pending}>
           {pending ? "Генерируем..." : "Сгенерировать пару"}
         </button>
+      </section>
+
+      <section className="card">
+        <h2>Параметры генерации</h2>
+        <p className="muted">Можно зафиксировать категории, чтобы проверять конкретную тематику.</p>
       </section>
 
       {availableCategories.length ? (

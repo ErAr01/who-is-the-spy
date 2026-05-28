@@ -1,0 +1,39 @@
+:root {
+  --font-family-main: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --color-bg: #120534;
+  --color-bg-deep: #0a0322;
+  --color-surface: #1f0c4c;
+  --color-surface-elevated: #29125f;
+  --color-surface-soft: #33206f;
+  --color-text-primary: #f5f4ff;
+  --color-text-secondary: #b8b3d8;
+  --color-text-muted: #938dbc;
+
+  --color-brand-primary: #6a41ff;
+  --color-brand-secondary: #2f8cff;
+  --color-accent: #ffd636;
+  --color-success: #39d98a;
+  --color-warning: #ffbb45;
+  --color-danger: #ff6d8c;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  --shadow-soft: 0 10px 30px rgb(7 5 29 / 34%);
+  --shadow-card: 0 18px 40px rgb(7 5 29 / 42%);
+  --shadow-button: 0 8px 22px rgb(39 18 97 / 35%);
+
+  --transition-base: 180ms ease;
+}

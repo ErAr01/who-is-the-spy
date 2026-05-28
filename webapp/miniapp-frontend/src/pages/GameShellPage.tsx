@@ -183,9 +183,29 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
   };
 
   const combinedError: ApiError | null = actions.actionError ?? polling.error;
+  const playersCount = polling.snapshot?.players.length ?? 0;
+  const screenSubtitle =
+    shellScreen === "lobby"
+      ? "Соберите команду, выберите категории и подготовьтесь к старту раунда."
+      : shellScreen === "playing"
+        ? "Обсуждайте карточки, скрывайте эмоции и вычисляйте шпиона."
+        : shellScreen === "voting"
+          ? "Выберите подозреваемого и завершите голосование админом."
+          : "Раунд завершен: можно обсудить результат и запустить новую игру.";
 
   return (
     <main className={`page shell-page ${reconnectedClass}`}>
+      <section className="card page-hero">
+        <p className="page-kicker">Игровой стол</p>
+        <h1 className="page-title">Кто шпион?</h1>
+        <p className="page-subtitle">{screenSubtitle}</p>
+        <div className="chip-grid" aria-label="Сводка игры">
+          <span className="chip">Игроков: {playersCount}</span>
+          <span className="chip">Ваш ID: {currentUserId}</span>
+          <span className="chip">Чат: {chatId}</span>
+        </div>
+      </section>
+
       <TopStatusBar gameState={polling.snapshot?.state ?? null} connection={polling.connection} />
 
       {combinedError ? (
