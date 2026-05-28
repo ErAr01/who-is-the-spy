@@ -1,5 +1,6 @@
 import { AuthGatePage } from "../pages/AuthGatePage";
 import { GameShellPage } from "../pages/GameShellPage";
+import { PrivateTestPairPage } from "../pages/PrivateTestPairPage";
 import { useMiniAppAuth } from "../hooks/useMiniAppAuth";
 import { useTelegramWebApp } from "../hooks/useTelegramWebApp";
 
@@ -32,11 +33,15 @@ export function App() {
   }
 
   return (
-    <GameShellPage
-      chatId={telegram.chatId}
-      sessionToken={auth.session.token}
-      currentUserId={auth.session.user.user_id}
-      onSessionExpired={auth.logout}
-    />
+    telegram.mode === "testpair" ? (
+      <PrivateTestPairPage sessionToken={auth.session.token} onSessionExpired={auth.logout} />
+    ) : (
+      <GameShellPage
+        chatId={telegram.chatId}
+        sessionToken={auth.session.token}
+        currentUserId={auth.session.user.user_id}
+        onSessionExpired={auth.logout}
+      />
+    )
   );
 }

@@ -6,12 +6,15 @@ from aiogram import Bot, F, Router
 from aiogram.types import CallbackQuery
 
 from src.analytics import AnalyticsEmitter, AnalyticsEvent, AnalyticsEventName
-from src.game.engine import all_players_voted
-from src.game.models import GameState, Player
+from src.config import Settings
+from src.game.engine import all_players_voted, current_round_player_ids
+from src.game.lifecycle import is_lobby_expired, reset_to_fresh_lobby, touch_activity
+from src.game.models import Game, GameState, Player
 from src.game.provider_factory import build_content_provider
 from src.handlers.admin_actions import cancel_game, close_voting, open_voting, start_round
 from src.utils.category_labels import format_categories
 from src.utils.keyboards import lobby_keyboard
+from src.utils.miniapp_links import build_miniapp_chat_url
 
 if TYPE_CHECKING:
     from src.game.repo import GameRepo
@@ -38,7 +41,12 @@ def render_lobby_text(game_chat_id: int, players: list[Player], selected_categor
 
 
 @router.callback_query(F.data.startswith("join:"))
-async def join_game(callback: CallbackQuery, repo: GameRepo, analytics_emitter: AnalyticsEmitter) -> None:
+async def join_game(
+    callback: CallbackQuery,
+    repo: GameRepo,
+    settings: Settings,
+    analytics_emitter: AnalyticsEmitter,
+) -> None:
     if callback.from_user is None or callback.data is None:
         return
 
@@ -48,17 +56,20 @@ async def join_game(callback: CallbackQuery, repo: GameRepo, analytics_emitter: 
     if game is None:
         await callback.answer("Игра не найдена.", show_alert=True)
         return
-    if game.state != GameState.LOBBY:
-        await callback.answer("Игра уже началась.", show_alert=True)
+    if game.state == GameState.CUSTOM_SETUP:
+        await callback.answer("Сейчас нельзя присоединиться к игре.", show_alert=True)
         return
     if not await repo.has_user_started(callback.from_user.id):
         await callback.answer("Сначала напиши боту в личку: /start", show_alert=True)
         return
 
+    joined_now = False
     if all(player.user_id != callback.from_user.id for player in game.players):
         display_name = callback.from_user.full_name or str(callback.from_user.id)
         game.players.append(Player(user_id=callback.from_user.id, name=display_name))
+        touch_activity(game)
         await repo.save_game(game)
+        joined_now = True
         analytics_emitter.emit(
             AnalyticsEvent(
                 event_name=AnalyticsEventName.PLAYER_JOINED,
@@ -69,16 +80,30 @@ async def join_game(callback: CallbackQuery, repo: GameRepo, analytics_emitter: 
             )
         )
 
-    if callback.message:
+    miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, game.chat_id)
+    if callback.message and game.state == GameState.LOBBY:
         await callback.message.edit_text(
             render_lobby_text(game.chat_id, game.players, game.selected_categories),
-            reply_markup=lobby_keyboard(game.chat_id, game.available_categories, game.selected_categories),
+            reply_markup=lobby_keyboard(
+                game.chat_id,
+                game.available_categories,
+                game.selected_categories,
+                miniapp_url=miniapp_url,
+            ),
         )
+    if joined_now and game.state != GameState.LOBBY:
+        await callback.answer("Ты добавлен в игру. Участие начнётся со следующего раунда.", show_alert=True)
+        return
     await callback.answer("Ты в игре.")
 
 
 @router.callback_query(F.data.startswith("category:"))
-async def toggle_category(callback: CallbackQuery, repo: GameRepo, analytics_emitter: AnalyticsEmitter) -> None:
+async def toggle_category(
+    callback: CallbackQuery,
+    repo: GameRepo,
+    settings: Settings,
+    analytics_emitter: AnalyticsEmitter,
+) -> None:
     if callback.from_user is None or callback.data is None:
         return
 
@@ -100,6 +125,7 @@ async def toggle_category(callback: CallbackQuery, repo: GameRepo, analytics_emi
     else:
         game.selected_categories.append(category)
         game.selected_categories.sort()
+    touch_activity(game)
     await repo.save_game(game)
     analytics_emitter.emit(
         AnalyticsEvent(
@@ -110,10 +136,16 @@ async def toggle_category(callback: CallbackQuery, repo: GameRepo, analytics_emi
             payload={"category": category, "selected_categories": list(game.selected_categories)},
         )
     )
+    miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, game.chat_id)
     if callback.message:
         await callback.message.edit_text(
             render_lobby_text(game.chat_id, game.players, game.selected_categories),
-            reply_markup=lobby_keyboard(game.chat_id, game.available_categories, game.selected_categories),
+            reply_markup=lobby_keyboard(
+                game.chat_id,
+                game.available_categories,
+                game.selected_categories,
+                miniapp_url=miniapp_url,
+            ),
         )
     await callback.answer("Категории обновлены.")
 
@@ -134,7 +166,7 @@ async def vote(callback: CallbackQuery, repo: GameRepo, analytics_emitter: Analy
         await callback.answer("Сейчас не этап голосования.", show_alert=True)
         return
 
-    player_ids = {player.user_id for player in game.players}
+    player_ids = set(current_round_player_ids(game))
     if callback.from_user.id not in player_ids:
         await callback.answer("Ты не участник этой игры.", show_alert=True)
         return
@@ -143,6 +175,7 @@ async def vote(callback: CallbackQuery, repo: GameRepo, analytics_emitter: Analy
         return
 
     game.votes[callback.from_user.id] = target_id
+    touch_activity(game)
     await repo.save_game(game)
     analytics_emitter.emit(
         AnalyticsEvent(
@@ -171,6 +204,7 @@ async def vote(callback: CallbackQuery, repo: GameRepo, analytics_emitter: Analy
 async def admin_start_round(
     callback: CallbackQuery,
     repo: GameRepo,
+    settings: Settings,
     bot: Bot,
     analytics_emitter: AnalyticsEmitter,
 ) -> None:
@@ -185,6 +219,20 @@ async def admin_start_round(
         return
     if callback.from_user.id != game.admin_id:
         await callback.answer("Только админ может запускать игру.", show_alert=True)
+        return
+    if await _reset_lobby_if_idle(game=game, repo=repo, settings=settings):
+        if callback.message:
+            miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, game.chat_id)
+            await callback.message.answer(
+                "Лобби было неактивно более часа и сброшено. Игрокам нужно присоединиться заново.",
+                reply_markup=lobby_keyboard(
+                    game.chat_id,
+                    game.available_categories,
+                    game.selected_categories,
+                    miniapp_url=miniapp_url,
+                ),
+            )
+        await callback.answer("Лобби сброшено по неактивности.", show_alert=True)
         return
     if game.state != GameState.LOBBY:
         await callback.answer("Игру можно запустить только из лобби.", show_alert=True)
@@ -315,6 +363,7 @@ async def admin_cancel_game(
 async def repeat_round(
     callback: CallbackQuery,
     repo: GameRepo,
+    settings: Settings,
     bot: Bot,
     analytics_emitter: AnalyticsEmitter,
 ) -> None:
@@ -329,6 +378,20 @@ async def repeat_round(
         return
     if callback.from_user.id != game.admin_id:
         await callback.answer("Только админ может запускать новый раунд.", show_alert=True)
+        return
+    if await _reset_lobby_if_idle(game=game, repo=repo, settings=settings):
+        if callback.message:
+            miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, game.chat_id)
+            await callback.message.answer(
+                "Лобби было неактивно более часа и сброшено. Игрокам нужно присоединиться заново.",
+                reply_markup=lobby_keyboard(
+                    game.chat_id,
+                    game.available_categories,
+                    game.selected_categories,
+                    miniapp_url=miniapp_url,
+                ),
+            )
+        await callback.answer("Лобби сброшено по неактивности.", show_alert=True)
         return
     if game.state != GameState.FINISHED:
         await callback.answer("Раунд еще не завершен.", show_alert=True)
@@ -360,7 +423,7 @@ async def repeat_round(
 
 
 @router.callback_query(F.data.startswith("postround:newcats:"))
-async def choose_new_categories(callback: CallbackQuery, repo: GameRepo) -> None:
+async def choose_new_categories(callback: CallbackQuery, repo: GameRepo, settings: Settings) -> None:
     if callback.from_user is None or callback.data is None:
         return
 
@@ -389,14 +452,31 @@ async def choose_new_categories(callback: CallbackQuery, repo: GameRepo) -> None
     game.civilian_search_url = None
     game.spy_search_url = None
     game.votes = {}
+    game.round_player_ids = []
     game.round_started_at_ts = None
     game.selected_categories = []
-    game.available_categories = build_content_provider().get_available_categories()
+    game.available_categories = build_content_provider(settings).get_available_categories()
+    touch_activity(game)
     await repo.save_game(game)
 
     if callback.message:
+        miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, game.chat_id)
         await callback.message.answer(
             render_lobby_text(game.chat_id, game.players, game.selected_categories),
-            reply_markup=lobby_keyboard(game.chat_id, game.available_categories, game.selected_categories),
+            reply_markup=lobby_keyboard(
+                game.chat_id,
+                game.available_categories,
+                game.selected_categories,
+                miniapp_url=miniapp_url,
+            ),
         )
     await callback.answer("Категории сброшены.")
+
+
+async def _reset_lobby_if_idle(*, game: Game, repo: GameRepo, settings: Settings) -> bool:
+    if not is_lobby_expired(game, idle_seconds=settings.lobby_idle_reset_seconds):
+        return False
+    provider = build_content_provider(settings)
+    reset_to_fresh_lobby(game, available_categories=provider.get_available_categories())
+    await repo.save_game(game)
+    return True

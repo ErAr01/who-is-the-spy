@@ -6,7 +6,11 @@ from time import monotonic
 from aiogram import Bot
 
 from src.analytics import AnalyticsEmitter, AnalyticsEvent, AnalyticsEventName
+from src.config import Settings, get_settings
+from src.game.engine import build_google_search_url
+from src.game.lifecycle import is_lobby_expired, reset_to_fresh_lobby, touch_activity
 from src.game.models import Game, GameState, Player
+from src.game.provider_factory import build_content_provider
 from src.handlers.admin_actions import cancel_game, close_voting, open_voting, start_round
 from src.miniapp.errors import MiniAppError
 
@@ -15,6 +19,8 @@ from src.miniapp.errors import MiniAppError
 class MiniAppActionResult:
     version: int
     updated_at_ts: float | None
+    note_code: str | None = None
+    note_message: str | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -30,10 +36,12 @@ class GameService:
         repo: object,
         bot: Bot,
         analytics_emitter: AnalyticsEmitter,
+        settings: Settings | None = None,
     ) -> None:
         self._repo = repo
         self._bot = bot
         self._analytics_emitter = analytics_emitter
+        self._settings = settings or get_settings()
 
     async def get_snapshot(self, *, chat_id: int, user_id: int, since_version: int | None) -> MiniAppSnapshotResult:
         started_at = monotonic()
@@ -59,7 +67,12 @@ class GameService:
     async def join(self, *, chat_id: int, user_id: int, name: str) -> MiniAppActionResult:
         async with self._repo.chat_lock(chat_id):
             game = await self._require_game(chat_id)
-            self._require_state(game, {GameState.LOBBY}, "join_forbidden_state", "К игре можно присоединиться только в лобби.")
+            self._require_state(
+                game,
+                {GameState.LOBBY, GameState.PLAYING, GameState.VOTING, GameState.FINISHED},
+                "join_forbidden_state",
+                "Сейчас нельзя присоединиться к игре.",
+            )
             if not await self._repo.has_user_started(user_id):
                 raise MiniAppError(
                     code="private_start_required",
@@ -68,6 +81,7 @@ class GameService:
                 )
             if user_id not in self._player_ids(game):
                 game.players.append(Player(user_id=user_id, name=name))
+                touch_activity(game)
                 await self._repo.save_game(game)
                 self._analytics_emitter.emit(
                     AnalyticsEvent(
@@ -77,6 +91,13 @@ class GameService:
                         game_id=str(chat_id),
                         payload={"players_count": len(game.players), "source": "miniapp"},
                     )
+                )
+            if game.state != GameState.LOBBY:
+                return MiniAppActionResult(
+                    version=game.version,
+                    updated_at_ts=game.updated_at_ts,
+                    note_code="queued_for_next_round",
+                    note_message="Игрок добавлен. Участие начнётся со следующего раунда.",
                 )
             return MiniAppActionResult(version=game.version, updated_at_ts=game.updated_at_ts)
 
@@ -101,6 +122,7 @@ class GameService:
             else:
                 game.selected_categories.append(category)
                 game.selected_categories.sort()
+            touch_activity(game)
             await self._repo.save_game(game)
             self._analytics_emitter.emit(
                 AnalyticsEvent(
@@ -122,6 +144,13 @@ class GameService:
             game = await self._require_game(chat_id)
             self._require_admin(game, user_id)
             self._require_state(game, {GameState.LOBBY}, "start_forbidden_state", "Игру можно начать только из лобби.")
+            if self._reset_lobby_if_idle(game):
+                await self._repo.save_game(game)
+                raise MiniAppError(
+                    code="lobby_reset_due_inactivity",
+                    message="Лобби было неактивно более часа и сброшено. Игрокам нужно присоединиться заново.",
+                    status_code=409,
+                )
             if len(game.players) < 3:
                 raise MiniAppError(
                     code="not_enough_players",
@@ -166,7 +195,7 @@ class GameService:
                 "vote_forbidden_state",
                 "Сейчас не этап голосования.",
             )
-            player_ids = self._player_ids(game)
+            player_ids = self._round_player_ids(game)
             if user_id not in player_ids:
                 raise MiniAppError(
                     code="member_required",
@@ -180,6 +209,7 @@ class GameService:
                     status_code=400,
                 )
             game.votes[user_id] = target_id
+            touch_activity(game)
             await self._repo.save_game(game)
             self._analytics_emitter.emit(
                 AnalyticsEvent(
@@ -237,7 +267,7 @@ class GameService:
 
     async def get_my_role(self, *, chat_id: int, user_id: int) -> dict[str, str | bool | None]:
         game = await self._require_game(chat_id)
-        player_ids = self._player_ids(game)
+        player_ids = self._round_player_ids(game)
         if user_id not in player_ids:
             raise MiniAppError(
                 code="member_required",
@@ -257,9 +287,51 @@ class GameService:
             "payload": payload,
         }
 
+    async def generate_test_pair(
+        self,
+        *,
+        user_id: int,
+        categories: list[str] | None = None,
+    ) -> dict[str, str | None]:
+        if not await self._repo.has_user_started(user_id):
+            raise MiniAppError(
+                code="private_start_required",
+                message="Сначала напиши боту в личку: /start.",
+                status_code=403,
+            )
+        provider = build_content_provider(self._settings)
+        try:
+            pair = provider.get_random_image_pair(categories or None)
+        except ValueError as exc:
+            raise MiniAppError(code="testpair_unavailable", message=str(exc), status_code=409) from exc
+        return {
+            "theme": pair.theme,
+            "civilian_id": pair.civilian,
+            "civilian_name": pair.civilian_name,
+            "civilian_wiki_url": pair.civilian_wiki_url,
+            "civilian_search_url": build_google_search_url(pair.civilian_name),
+            "spy_id": pair.spy,
+            "spy_name": pair.spy_name,
+            "spy_wiki_url": pair.spy_wiki_url,
+            "spy_search_url": build_google_search_url(pair.spy_name),
+        }
+
     @staticmethod
     def _player_ids(game: Game) -> set[int]:
         return {player.user_id for player in game.players}
+
+    @staticmethod
+    def _round_player_ids(game: Game) -> set[int]:
+        if game.round_player_ids:
+            return set(game.round_player_ids)
+        return {player.user_id for player in game.players}
+
+    def _reset_lobby_if_idle(self, game: Game) -> bool:
+        if not is_lobby_expired(game, idle_seconds=self._settings.lobby_idle_reset_seconds):
+            return False
+        provider = build_content_provider(self._settings)
+        reset_to_fresh_lobby(game, available_categories=provider.get_available_categories())
+        return True
 
     async def _require_game(self, chat_id: int) -> Game:
         game = await self._repo.get_game(chat_id)

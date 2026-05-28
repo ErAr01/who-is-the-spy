@@ -12,10 +12,12 @@ from src.analytics import AnalyticsEmitter, AnalyticsEvent, AnalyticsEventName
 from src.game.engine import (
     VotingResult,
     build_voting_result_text,
+    current_round_player_ids,
     finish_voting,
     prepare_game_round,
     send_roles,
 )
+from src.game.lifecycle import touch_activity
 from src.game.models import Game, GameState
 from src.game.provider_factory import build_content_provider
 from src.utils.keyboards import admin_controls_keyboard, post_round_keyboard, vote_keyboard
@@ -166,6 +168,8 @@ async def start_round(
             "то она ходит первой",
             reply_markup=admin_controls_keyboard(game),
         )
+    touch_activity(game)
+    await repo.save_game(game)
 
     return StartRoundResult(delivered=delivered, failed=failed)
 
@@ -180,6 +184,7 @@ async def open_voting(
 ) -> None:
     game.state = GameState.VOTING
     game.votes = {}
+    touch_activity(game)
     await repo.save_game(game)
     analytics_emitter.emit(
         AnalyticsEvent(
@@ -188,7 +193,7 @@ async def open_voting(
             user_id=actor_id,
             game_id=str(game.chat_id),
             round_id=f"{game.chat_id}:1",
-            payload={"players_count": len(game.players), "votes_count": 0},
+            payload={"players_count": len(current_round_player_ids(game)), "votes_count": 0},
         )
     )
     if responder is not None:
@@ -281,4 +286,6 @@ async def complete_round(
             payload=payload,
         )
     )
+    game.round_player_ids = []
+    touch_activity(game)
     await repo.save_game(game)

@@ -1,5 +1,6 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
+from src.game.engine import current_round_players
 from src.game.models import Game, GameState
 from src.utils.category_labels import category_label
 
@@ -55,8 +56,18 @@ def lobby_keyboard(
     chat_id: int,
     available_categories: list[str],
     selected_categories: list[str],
+    miniapp_url: str | None = None,
 ) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = [[InlineKeyboardButton(text="✅ Join", callback_data=f"join:{chat_id}")]]
+    if miniapp_url:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="📱 Открыть Mini App",
+                    web_app=WebAppInfo(url=miniapp_url),
+                )
+            ]
+        )
     if not available_categories:
         rows.append([InlineKeyboardButton(text="⚠️ Нет категорий в БД", callback_data=f"noop:{chat_id}")])
         rows.extend(_admin_rows_for_state(GameState.LOBBY, chat_id))
@@ -77,7 +88,7 @@ def lobby_keyboard(
 
 def vote_keyboard(game: Game, *, include_admin_controls: bool = False) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
-    for player in game.players:
+    for player in current_round_players(game):
         rows.append(
             [
                 InlineKeyboardButton(
@@ -93,3 +104,9 @@ def vote_keyboard(game: Game, *, include_admin_controls: bool = False) -> Inline
 
 def post_round_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=_admin_rows_for_state(GameState.FINISHED, chat_id))
+
+
+def miniapp_open_keyboard(url: str, *, text: str = "📱 Открыть Mini App") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))]]
+    )

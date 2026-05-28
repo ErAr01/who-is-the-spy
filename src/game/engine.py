@@ -24,7 +24,9 @@ def prepare_game_round(game: Game, content: ContentProvider) -> Game:
     if not game.players:
         raise ValueError("Game has no players")
 
-    game.spy_id = _pick_spy_id(game.players, previous_spy_id=game.spy_id)
+    game.round_player_ids = [player.user_id for player in game.players]
+    round_players = current_round_players(game)
+    game.spy_id = _pick_spy_id(round_players, previous_spy_id=game.spy_id)
 
     pair = content.get_random_image_pair(game.selected_categories or None, chat_id=game.chat_id)
     game.theme = pair.theme
@@ -47,7 +49,7 @@ def prepare_game_round(game: Game, content: ContentProvider) -> Game:
 async def send_roles(bot: Bot, game: Game, content: ContentProvider) -> tuple[list[int], list[int]]:
     delivered: list[int] = []
     failed: list[int] = []
-    for player in game.players:
+    for player in current_round_players(game):
         payload = game.spy_payload if player.user_id == game.spy_id else game.civilian_payload
         if payload is None:
             failed.append(player.user_id)
@@ -82,7 +84,13 @@ async def send_roles(bot: Bot, game: Game, content: ContentProvider) -> tuple[li
 
 def finish_voting(game: Game) -> VotingResult:
     round_duration_seconds = _round_duration_seconds(game)
-    if not game.votes:
+    round_player_ids = set(current_round_player_ids(game))
+    valid_votes = {
+        voter_id: target_id
+        for voter_id, target_id in game.votes.items()
+        if voter_id in round_player_ids and target_id in round_player_ids
+    }
+    if not valid_votes:
         game.state = GameState.FINISHED
         game.round_started_at_ts = None
         return VotingResult(
@@ -93,7 +101,7 @@ def finish_voting(game: Game) -> VotingResult:
         )
 
     tally: dict[int, int] = {}
-    for target in game.votes.values():
+    for target in valid_votes.values():
         tally[target] = tally.get(target, 0) + 1
 
     voted_out_id = sorted(tally.items(), key=lambda item: (-item[1], item[0]))[0][0]
@@ -109,7 +117,7 @@ def finish_voting(game: Game) -> VotingResult:
 
 
 def all_players_voted(game: Game) -> bool:
-    player_ids = {player.user_id for player in game.players}
+    player_ids = set(current_round_player_ids(game))
     return player_ids.issubset(set(game.votes))
 
 
@@ -118,6 +126,19 @@ def player_name_by_id(game: Game, user_id: int) -> str:
         if player.user_id == user_id:
             return player.name
     return str(user_id)
+
+
+def current_round_player_ids(game: Game) -> list[int]:
+    if game.round_player_ids:
+        return list(game.round_player_ids)
+    return [player.user_id for player in game.players]
+
+
+def current_round_players(game: Game) -> list[Player]:
+    if not game.round_player_ids:
+        return list(game.players)
+    by_id = {player.user_id: player for player in game.players}
+    return [by_id[user_id] for user_id in game.round_player_ids if user_id in by_id]
 
 
 def _build_role_caption(game: Game, user_id: int) -> str:

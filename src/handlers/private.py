@@ -9,12 +9,15 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from src.analytics import AnalyticsEmitter, AnalyticsEvent, AnalyticsEventName
+from src.config import Settings
 from src.fsm.states import CustomSetup, TestRoundSetup
 from src.game.content import ContentProvider
 from src.game.engine import build_google_search_url
 from src.game.models import PayloadType
 from src.game.provider_factory import build_content_provider
 from src.utils.category_labels import category_label, format_categories
+from src.utils.keyboards import miniapp_open_keyboard
+from src.utils.miniapp_links import build_miniapp_chat_url
 
 if TYPE_CHECKING:
     from src.game.repo import GameRepo
@@ -119,6 +122,20 @@ async def help_private(message: Message) -> None:
         "4) Админ запускает /startgame.\n\n"
         "Для теста контента в личке: /testpair.\n"
         "Откроется тест-лобби с выбором категорий и симуляцией раунда."
+    )
+
+
+@router.message(Command("app"))
+async def open_private_miniapp(message: Message, settings: Settings) -> None:
+    if message.from_user is None:
+        return
+    miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, message.from_user.id, mode="testpair")
+    if not miniapp_url:
+        await message.answer("Mini App URL не настроен. Заполните MINIAPP_PUBLIC_URL в .env.")
+        return
+    await message.answer(
+        "Открыть Mini App в личном тестовом режиме:",
+        reply_markup=miniapp_open_keyboard(miniapp_url, text="📱 Открыть тестовую Mini App"),
     )
 
 

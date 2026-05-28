@@ -21,13 +21,15 @@ from src.miniapp.dto import (
     MiniAppRoleResponse,
     MiniAppSnapshotDataDTO,
     MiniAppSnapshotResponse,
+    MiniAppTestPairCardDTO,
+    MiniAppTestPairResponse,
     MiniAppToggleCategoryRequest,
     MiniAppPlayerDTO,
     MiniAppUserDTO,
     MiniAppVoteRequest,
 )
 from src.miniapp.errors import MiniAppError
-from src.miniapp.service import GameService
+from src.miniapp.service import GameService, MiniAppActionResult
 from src.miniapp.session import MiniAppSessionClaims, MiniAppSessionManager
 
 _security = HTTPBearer(auto_error=False)
@@ -62,7 +64,12 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
             secret=settings.miniapp_session_secret.get_secret_value(),
             ttl_seconds=settings.miniapp_session_ttl_seconds,
         ),
-        game_service=GameService(repo=app_context.redis_repo, bot=app_context.bot, analytics_emitter=analytics_emitter),
+        game_service=GameService(
+            repo=app_context.redis_repo,
+            bot=app_context.bot,
+            analytics_emitter=analytics_emitter,
+            settings=settings,
+        ),
         analytics_emitter=analytics_emitter,
     )
 
@@ -156,7 +163,7 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
                 name=claims.name,
             ),
         )
-        return MiniAppActionResponse(version=result.version, updated_at_ts=result.updated_at_ts)
+        return _build_action_response(result)
 
     @router.post("/categories/toggle", response_model=MiniAppActionResponse)
     async def toggle_category(
@@ -177,7 +184,7 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
                 category=payload.category.strip().lower(),
             ),
         )
-        return MiniAppActionResponse(version=result.version, updated_at_ts=result.updated_at_ts)
+        return _build_action_response(result)
 
     @router.post("/start", response_model=MiniAppActionResponse)
     async def start(
@@ -194,7 +201,7 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
             user_id=claims.user_id,
             executor=lambda: context.game_service.start(chat_id=payload.chat_id, user_id=claims.user_id),
         )
-        return MiniAppActionResponse(version=result.version, updated_at_ts=result.updated_at_ts)
+        return _build_action_response(result)
 
     @router.post("/voting/open", response_model=MiniAppActionResponse)
     async def voting_open(
@@ -211,7 +218,7 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
             user_id=claims.user_id,
             executor=lambda: context.game_service.open_voting(chat_id=payload.chat_id, user_id=claims.user_id),
         )
-        return MiniAppActionResponse(version=result.version, updated_at_ts=result.updated_at_ts)
+        return _build_action_response(result)
 
     @router.post("/votes", response_model=MiniAppActionResponse)
     async def votes(
@@ -232,7 +239,7 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
                 target_id=payload.target_id,
             ),
         )
-        return MiniAppActionResponse(version=result.version, updated_at_ts=result.updated_at_ts)
+        return _build_action_response(result)
 
     @router.post("/voting/close", response_model=MiniAppActionResponse)
     async def voting_close(
@@ -249,7 +256,7 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
             user_id=claims.user_id,
             executor=lambda: context.game_service.close_voting(chat_id=payload.chat_id, user_id=claims.user_id),
         )
-        return MiniAppActionResponse(version=result.version, updated_at_ts=result.updated_at_ts)
+        return _build_action_response(result)
 
     @router.post("/cancel", response_model=MiniAppActionResponse)
     async def cancel(
@@ -266,7 +273,7 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
             user_id=claims.user_id,
             executor=lambda: context.game_service.cancel(chat_id=payload.chat_id, user_id=claims.user_id),
         )
-        return MiniAppActionResponse(version=result.version, updated_at_ts=result.updated_at_ts)
+        return _build_action_response(result)
 
     @router.get("/me/role", response_model=MiniAppRoleResponse)
     async def me_role(
@@ -284,6 +291,45 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
             executor=lambda: context.game_service.get_my_role(chat_id=chat_id, user_id=claims.user_id),
         )
         return MiniAppRoleResponse(**payload)
+
+    @router.get("/testpair", response_model=MiniAppTestPairResponse)
+    async def testpair(
+        request: Request,
+        categories: list[str] | None = Query(default=None),
+        claims: MiniAppSessionClaims = Depends(_auth_dependency),
+    ) -> MiniAppTestPairResponse:
+        if claims.chat_id != claims.user_id:
+            raise MiniAppError(
+                code="private_mode_only",
+                message="Этот endpoint доступен только в личном режиме Mini App.",
+                status_code=403,
+            )
+        context = _get_context(request)
+        payload = await _run_action(
+            context=context,
+            action_name="testpair",
+            chat_id=claims.chat_id,
+            user_id=claims.user_id,
+            executor=lambda: context.game_service.generate_test_pair(
+                user_id=claims.user_id,
+                categories=categories,
+            ),
+        )
+        return MiniAppTestPairResponse(
+            theme=payload["theme"],
+            civilian=MiniAppTestPairCardDTO(
+                card_id=payload["civilian_id"],
+                name=payload["civilian_name"],
+                wiki_url=payload["civilian_wiki_url"],
+                search_url=payload["civilian_search_url"],
+            ),
+            spy=MiniAppTestPairCardDTO(
+                card_id=payload["spy_id"],
+                name=payload["spy_name"],
+                wiki_url=payload["spy_wiki_url"],
+                search_url=payload["spy_search_url"],
+            ),
+        )
 
     app.include_router(router)
     return app
@@ -347,11 +393,13 @@ async def _run_action(
 
 def _build_snapshot(*, game: Game, user_id: int) -> MiniAppSnapshotDataDTO:
     players = [MiniAppPlayerDTO(user_id=player.user_id, name=player.name) for player in game.players]
+    round_player_ids = list(game.round_player_ids) if game.round_player_ids else [player.user_id for player in game.players]
     return MiniAppSnapshotDataDTO(
         chat_id=game.chat_id,
         state=game.state,
         admin_id=game.admin_id,
         players=players,
+        round_player_ids=round_player_ids,
         selected_categories=list(game.selected_categories),
         available_categories=list(game.available_categories),
         votes_count=len(game.votes),
@@ -359,4 +407,14 @@ def _build_snapshot(*, game: Game, user_id: int) -> MiniAppSnapshotDataDTO:
         updated_at_ts=game.updated_at_ts,
         is_admin=user_id == game.admin_id,
         is_member=user_id in {player.user_id for player in game.players},
+        is_in_current_round=user_id in set(round_player_ids),
+    )
+
+
+def _build_action_response(result: MiniAppActionResult) -> MiniAppActionResponse:
+    return MiniAppActionResponse(
+        version=result.version,
+        updated_at_ts=result.updated_at_ts,
+        note_code=result.note_code,
+        note_message=result.note_message,
     )

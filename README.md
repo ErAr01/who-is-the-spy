@@ -13,6 +13,7 @@ Telegram-бот для игры «Кто шпион» и отдельный CLI-
 - `/vote` — открыть голосование.
 - `/endvote` — завершить голосование и показать результат.
 - `/cancel` — отменить активную игру.
+- `/app` — открыть Mini App (в группе — игровой режим, в личке — `mode=testpair`).
 - `/testpair` — в личке открыть тест-лобби, выбрать категории и сгенерировать тестовый раунд.
 
 ## Полная документация
@@ -117,9 +118,11 @@ METRICS_ENABLED=false
 MINIAPP_ENABLED=true
 MINIAPP_HOST=0.0.0.0
 MINIAPP_PORT=8000
+MINIAPP_PUBLIC_URL=https://example.sslip.io
 MINIAPP_INIT_DATA_TTL_SECONDS=300
 MINIAPP_SESSION_TTL_SECONDS=900
 MINIAPP_SESSION_SECRET=replace_with_strong_secret
+LOBBY_IDLE_RESET_SECONDS=3600
 ```
 
 Подними Redis и запусти бота:
@@ -133,8 +136,13 @@ python -m src.main
 
 При `MINIAPP_ENABLED=true` бот продолжает polling, а HTTP API Mini App поднимается параллельно в том же процессе:
 - Базовый префикс: `http://localhost:8000/api/v1/miniapp`
-- MVP эндпоинты: `auth`, `game`, `join`, `categories/toggle`, `start`, `voting/open`, `votes`, `voting/close`, `cancel`, `me/role`
+- MVP эндпоинты: `auth`, `game`, `join`, `categories/toggle`, `start`, `voting/open`, `votes`, `voting/close`, `cancel`, `me/role`, `testpair`
 - Для long-poll клиента Mini App поддержан протокол `since_version` + `no_change` в `GET /game`.
+- Если задан `MINIAPP_PUBLIC_URL`, бот добавляет в групповое лобби кнопку `📱 Открыть Mini App` и автоматически передаёт `chat_id` в query-параметре URL.
+- Команда `/app`:
+  - в группе открывает Mini App с `chat_id=<group_chat_id>`;
+  - в личке открывает Mini App в режиме `mode=testpair` с `chat_id=<user_id>`.
+- Если после последнего игрового действия прошло более `LOBBY_IDLE_RESET_SECONDS` (по умолчанию 3600 сек), следующий старт раунда сбрасывает лобби: игрокам нужно заново нажать `Join`.
 
 ### Опционально: self-hosted PostHog (заготовка)
 
@@ -151,13 +159,17 @@ docker compose -f deploy/observability/posthog/docker-compose.posthog.yml up -d
 1. Добавь бота в групповой чат.
 2. Каждый игрок один раз пишет боту в личку: `/start`.
 3. Админ в группе запускает: `/newgame`.
-4. Игроки нажимают `Join`.
+4. Игроки нажимают `Join` (или открывают Mini App через `/app` и жмут Join там).
 5. Админ (опционально) выбирает категории в лобби.
 6. Админ запускает раунд: `/startgame`.
 7. Игроки получают карточки в личку и обсуждают в группе.
 8. Админ запускает голосование: `/vote`.
 9. Игроки голосуют кнопками.
-10. Админ завершает голосование: `/endvote` (или оно завершится автоматически, когда проголосуют все).
+10. Админ завершает голосование: `/endvote` (или оно завершится автоматически, когда проголосуют все участники текущего раунда).
+
+Правило постоянного лобби:
+- Состав `players` сохраняется между раундами.
+- Игрок, присоединившийся во время активного раунда, участвует только со следующего раунда.
 
 ### 4) Быстрая проверка контента в личке
 

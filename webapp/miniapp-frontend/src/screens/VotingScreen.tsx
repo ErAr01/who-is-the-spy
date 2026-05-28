@@ -11,13 +11,14 @@ interface Props {
 }
 
 export function VotingScreen({ snapshot, currentUserId, pendingAction, onVote, onCloseVoting }: Props) {
+  const roundPlayers = snapshot.players.filter((player) => snapshot.round_player_ids.includes(player.user_id));
   return (
     <>
       <VotePanel
-        players={snapshot.players}
+        players={roundPlayers}
         currentUserId={currentUserId}
-        disabled={!snapshot.is_member || pendingAction !== null}
-        disabledReason={!snapshot.is_member ? "Голосовать могут только участники" : undefined}
+        disabled={!snapshot.is_in_current_round || pendingAction !== null}
+        disabledReason={!snapshot.is_in_current_round ? "Голосовать могут только участники текущего раунда" : undefined}
         onVote={onVote}
       />
       <AdminActions

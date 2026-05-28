@@ -30,6 +30,7 @@ async def run() -> None:
         analytics_emitters.append(PrometheusAnalyticsEmitter())
     analytics_emitter = CompositeAnalyticsEmitter(emitters=analytics_emitters)
     app.dispatcher["repo"] = repo
+    app.dispatcher["settings"] = settings
     app.dispatcher["analytics_emitter"] = analytics_emitter
     app.dispatcher["dispatcher"] = app.dispatcher
     if settings.metrics_enabled:

@@ -32,6 +32,21 @@ const MAP: Record<string, MappedError> = {
     message: "Telegram подпись устарела.",
     cta: "Закройте и заново откройте Mini App.",
     shouldLogout: true
+  },
+  lobby_reset_due_inactivity: {
+    title: "Лобби сброшено",
+    message: "Игра была неактивна больше часа, поэтому состав очищен.",
+    cta: "Игрокам нужно снова нажать Join."
+  },
+  private_mode_only: {
+    title: "Только личный режим",
+    message: "Этот сценарий доступен только в личном чате с ботом.",
+    cta: "Откройте Mini App через команду /app в личке."
+  },
+  testpair_unavailable: {
+    title: "Не удалось подобрать пару",
+    message: "Для выбранных данных не хватает подходящих карточек.",
+    cta: "Попробуйте позже или добавьте больше размеченных карточек."
   }
 };
 

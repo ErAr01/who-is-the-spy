@@ -36,6 +36,7 @@ class Game:
     state: GameState
     mode: GameMode
     players: list[Player] = field(default_factory=list)
+    round_player_ids: list[int] = field(default_factory=list)
     spy_id: int | None = None
     payload_type: PayloadType = PayloadType.PHOTO
     theme: str | None = None
@@ -52,6 +53,7 @@ class Game:
     votes: dict[int, int] = field(default_factory=dict)
     lobby_message_id: int | None = None
     round_started_at_ts: float | None = None
+    last_activity_ts: float | None = None
     version: int = 0
     updated_at_ts: float | None = None
 
@@ -70,6 +72,7 @@ class Game:
             state=GameState(payload["state"]),
             mode=GameMode(payload["mode"]),
             players=[Player(**item) for item in payload.get("players", [])],
+            round_player_ids=[int(v) for v in payload.get("round_player_ids", [])],
             spy_id=payload.get("spy_id"),
             payload_type=PayloadType(payload.get("payload_type", PayloadType.PHOTO.value)),
             theme=payload.get("theme"),
@@ -88,6 +91,11 @@ class Game:
             round_started_at_ts=(
                 float(payload["round_started_at_ts"])
                 if payload.get("round_started_at_ts") is not None
+                else None
+            ),
+            last_activity_ts=(
+                float(payload["last_activity_ts"])
+                if payload.get("last_activity_ts") is not None
                 else None
             ),
             version=int(payload.get("version", 0)),

@@ -36,6 +36,22 @@ class AdminButtonsKeyboardTest(TestCase):
         self.assertIn("admin:endvote:777", callback_data)
         self.assertIn("admin:cancel:777", callback_data)
 
+    def test_vote_keyboard_uses_current_round_players_only(self) -> None:
+        game = self._game(GameState.VOTING)
+        game.players.append(Player(user_id=3, name="LateJoin"))
+        game.round_player_ids = [1, 2]
+
+        keyboard = vote_keyboard(game, include_admin_controls=False)
+        callback_data = [
+            button.callback_data
+            for row in keyboard.inline_keyboard
+            for button in row
+            if button.callback_data is not None
+        ]
+        self.assertIn("vote:777:1", callback_data)
+        self.assertIn("vote:777:2", callback_data)
+        self.assertNotIn("vote:777:3", callback_data)
+
     def test_post_round_keyboard_has_repeat_and_new_categories(self) -> None:
         keyboard = post_round_keyboard(777)
         callback_data = [
@@ -45,3 +61,18 @@ class AdminButtonsKeyboardTest(TestCase):
             if button.callback_data is not None
         ]
         self.assertEqual(callback_data, ["postround:repeat:777", "postround:newcats:777"])
+
+    def test_lobby_keyboard_can_include_miniapp_webapp_button(self) -> None:
+        keyboard = lobby_keyboard(
+            chat_id=777,
+            available_categories=["anime"],
+            selected_categories=[],
+            miniapp_url="https://example.sslip.io/?chat_id=777",
+        )
+        web_app_urls = [
+            button.web_app.url
+            for row in keyboard.inline_keyboard
+            for button in row
+            if button.web_app is not None
+        ]
+        self.assertEqual(web_app_urls, ["https://example.sslip.io/?chat_id=777"])

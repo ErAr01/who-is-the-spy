@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 
 import { miniAppClient } from "../api/miniappClient";
-import type { ApiError } from "../api/types";
+import type { ApiError, MiniAppActionResponse } from "../api/types";
 
 interface UseGameActionsResult {
   pendingAction: string | null;
   actionError: ApiError | null;
+  actionNote: string | null;
   clearActionError: () => void;
   join: () => Promise<void>;
   toggleCategory: (category: string) => Promise<void>;
@@ -23,12 +24,15 @@ export function useGameActions(
 ): UseGameActionsResult {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<ApiError | null>(null);
+  const [actionNote, setActionNote] = useState<string | null>(null);
 
-  async function runAction(actionName: string, action: () => Promise<unknown>): Promise<void> {
+  async function runAction(actionName: string, action: () => Promise<MiniAppActionResponse>): Promise<void> {
     setPendingAction(actionName);
     setActionError(null);
+    setActionNote(null);
     try {
-      await action();
+      const response = await action();
+      setActionNote(response.note_message ?? null);
       onActionSuccess();
     } catch (error) {
       setActionError(error as ApiError);
@@ -41,6 +45,7 @@ export function useGameActions(
     () => ({
       pendingAction,
       actionError,
+      actionNote,
       clearActionError: () => setActionError(null),
       join: () => runAction("join", () => miniAppClient.join(sessionToken, chatId)),
       toggleCategory: (category: string) =>
@@ -51,6 +56,6 @@ export function useGameActions(
       vote: (targetId: number) => runAction("vote", () => miniAppClient.vote(sessionToken, chatId, targetId)),
       cancel: () => runAction("cancel", () => miniAppClient.cancel(sessionToken, chatId))
     }),
-    [actionError, chatId, onActionSuccess, pendingAction, sessionToken]
+    [actionError, actionNote, chatId, onActionSuccess, pendingAction, sessionToken]
   );
 }

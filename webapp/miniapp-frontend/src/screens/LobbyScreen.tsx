@@ -15,6 +15,7 @@ interface Props {
 export function LobbyScreen({ snapshot, pendingAction, onJoin, onToggleCategory, onStart, onCancel }: Props) {
   const isAdmin = snapshot.is_admin;
   const isMember = snapshot.is_member;
+  const waitsNextRound = isMember && !snapshot.is_in_current_round;
 
   const joinDisabledReason = isMember ? "Вы уже в игре" : undefined;
 
@@ -29,6 +30,12 @@ export function LobbyScreen({ snapshot, pendingAction, onJoin, onToggleCategory,
             {pendingAction === "join" ? "Присоединяем..." : "Присоединиться к игре"}
           </button>
           {joinDisabledReason ? <p className="hint">{joinDisabledReason}</p> : null}
+        </section>
+      ) : null}
+
+      {waitsNextRound ? (
+        <section className="card">
+          <p className="hint">Вы уже в лобби. В текущий раунд вход закрыт, участие начнется со следующего.</p>
         </section>
       ) : null}
 

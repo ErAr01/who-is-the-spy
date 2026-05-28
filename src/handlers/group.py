@@ -7,12 +7,15 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from src.analytics import AnalyticsEmitter, AnalyticsEvent, AnalyticsEventName
+from src.config import Settings
+from src.game.lifecycle import is_lobby_expired, reset_to_fresh_lobby, touch_activity
 from src.handlers.admin_actions import cancel_game as cancel_game_action
 from src.handlers.admin_actions import close_voting, open_voting, start_round
 from src.game.models import Game, GameMode, GameState, Player
 from src.game.provider_factory import build_content_provider
 from src.handlers.callbacks import render_lobby_text
-from src.utils.keyboards import lobby_keyboard
+from src.utils.keyboards import lobby_keyboard, miniapp_open_keyboard
+from src.utils.miniapp_links import build_miniapp_chat_url
 
 if TYPE_CHECKING:
     from src.game.repo import GameRepo
@@ -22,7 +25,12 @@ router.message.filter(F.chat.type.in_({"group", "supergroup"}))
 
 
 @router.message(Command("newgame"))
-async def new_game(message: Message, repo: GameRepo, analytics_emitter: AnalyticsEmitter) -> None:
+async def new_game(
+    message: Message,
+    repo: GameRepo,
+    settings: Settings,
+    analytics_emitter: AnalyticsEmitter,
+) -> None:
     if message.from_user is None:
         return
     existing = await repo.get_game(message.chat.id)
@@ -44,10 +52,17 @@ async def new_game(message: Message, repo: GameRepo, analytics_emitter: Analytic
         players=players,
         available_categories=provider.get_available_categories(),
     )
+    touch_activity(game)
 
+    miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, game.chat_id)
     lobby_message = await message.answer(
         render_lobby_text(game.chat_id, game.players, game.selected_categories),
-        reply_markup=lobby_keyboard(game.chat_id, game.available_categories, game.selected_categories),
+        reply_markup=lobby_keyboard(
+            game.chat_id,
+            game.available_categories,
+            game.selected_categories,
+            miniapp_url=miniapp_url,
+        ),
     )
     game.lobby_message_id = lobby_message.message_id
     await repo.save_game(game)
@@ -70,6 +85,7 @@ async def new_game(message: Message, repo: GameRepo, analytics_emitter: Analytic
 async def start_game(
     message: Message,
     repo: GameRepo,
+    settings: Settings,
     bot: Bot,
     analytics_emitter: AnalyticsEmitter,
 ) -> None:
@@ -81,6 +97,11 @@ async def start_game(
         return
     if message.from_user.id != game.admin_id:
         await message.answer("Только админ может запускать игру.")
+        return
+    if await _reset_lobby_if_idle(game=game, repo=repo, settings=settings):
+        await message.answer(
+            "Лобби было неактивно более часа и сброшено. Игрокам нужно присоединиться заново."
+        )
         return
     if len(game.players) < 3:
         await message.answer("Нужно минимум 3 игрока.")
@@ -177,3 +198,24 @@ async def cancel_game(message: Message, repo: GameRepo, analytics_emitter: Analy
         analytics_emitter=analytics_emitter,
         responder=message,
     )
+
+
+@router.message(Command("app"))
+async def open_group_miniapp(message: Message, settings: Settings) -> None:
+    miniapp_url = build_miniapp_chat_url(settings.miniapp_public_url, message.chat.id)
+    if not miniapp_url:
+        await message.answer("Mini App URL не настроен. Заполните MINIAPP_PUBLIC_URL в .env.")
+        return
+    await message.answer(
+        "Открыть игру в Mini App для этого чата:",
+        reply_markup=miniapp_open_keyboard(miniapp_url),
+    )
+
+
+async def _reset_lobby_if_idle(*, game: Game, repo: GameRepo, settings: Settings) -> bool:
+    if not is_lobby_expired(game, idle_seconds=settings.lobby_idle_reset_seconds):
+        return False
+    provider = build_content_provider(settings)
+    reset_to_fresh_lobby(game, available_categories=provider.get_available_categories())
+    await repo.save_game(game)
+    return True

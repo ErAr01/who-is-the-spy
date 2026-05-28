@@ -46,6 +46,8 @@ class MiniAppActionResponse(BaseModel):
     ok: bool = True
     version: int
     updated_at_ts: float | None
+    note_code: str | None = None
+    note_message: str | None = None
 
 
 class MiniAppPlayerDTO(BaseModel):
@@ -58,6 +60,7 @@ class MiniAppSnapshotDataDTO(BaseModel):
     state: GameState
     admin_id: int
     players: list[MiniAppPlayerDTO]
+    round_player_ids: list[int]
     selected_categories: list[str]
     available_categories: list[str]
     votes_count: int
@@ -65,6 +68,7 @@ class MiniAppSnapshotDataDTO(BaseModel):
     updated_at_ts: float | None
     is_admin: bool
     is_member: bool
+    is_in_current_round: bool
 
 
 class MiniAppSnapshotResponse(BaseModel):
@@ -80,3 +84,16 @@ class MiniAppRoleResponse(BaseModel):
     role_name: str | None = None
     payload_type: str | None = None
     payload: str | None = None
+
+
+class MiniAppTestPairCardDTO(BaseModel):
+    card_id: str
+    name: str
+    wiki_url: str | None = None
+    search_url: str | None = None
+
+
+class MiniAppTestPairResponse(BaseModel):
+    theme: str
+    civilian: MiniAppTestPairCardDTO
+    spy: MiniAppTestPairCardDTO

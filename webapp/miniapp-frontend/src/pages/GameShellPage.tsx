@@ -89,6 +89,13 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
     }
   }, [actions.actionError, notify, onSessionExpired, polling.error, push, role.error]);
 
+  useEffect(() => {
+    if (!actions.actionNote) {
+      return;
+    }
+    push("info", actions.actionNote);
+  }, [actions.actionNote, push]);
+
   const renderScreen = () => {
     const snapshot = polling.snapshot;
     if (!snapshot) {

@@ -28,6 +28,7 @@ export interface MiniAppSnapshot {
   state: GameState;
   admin_id: number;
   players: MiniAppPlayer[];
+  round_player_ids: number[];
   selected_categories: string[];
   available_categories: string[];
   votes_count: number;
@@ -35,6 +36,7 @@ export interface MiniAppSnapshot {
   updated_at_ts: number | null;
   is_admin: boolean;
   is_member: boolean;
+  is_in_current_round: boolean;
 }
 
 export interface MiniAppSnapshotResponse {
@@ -48,6 +50,8 @@ export interface MiniAppActionResponse {
   ok: boolean;
   version: number;
   updated_at_ts: number | null;
+  note_code: string | null;
+  note_message: string | null;
 }
 
 export interface MiniAppRoleResponse {
@@ -56,6 +60,19 @@ export interface MiniAppRoleResponse {
   role_name: string | null;
   payload_type: string | null;
   payload: string | null;
+}
+
+export interface MiniAppTestPairCard {
+  card_id: string;
+  name: string;
+  wiki_url: string | null;
+  search_url: string | null;
+}
+
+export interface MiniAppTestPairResponse {
+  theme: string;
+  civilian: MiniAppTestPairCard;
+  spy: MiniAppTestPairCard;
 }
 
 export interface MappedError {

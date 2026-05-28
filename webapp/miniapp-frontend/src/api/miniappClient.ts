@@ -3,7 +3,8 @@ import type {
   MiniAppActionResponse,
   MiniAppAuthResponse,
   MiniAppRoleResponse,
-  MiniAppSnapshotResponse
+  MiniAppSnapshotResponse,
+  MiniAppTestPairResponse
 } from "./types";
 
 export class MiniAppApiClient {
@@ -66,6 +67,18 @@ export class MiniAppApiClient {
 
   async cancel(sessionToken: string, chatId: number): Promise<MiniAppActionResponse> {
     return this.action("/cancel", sessionToken, chatId);
+  }
+
+  async getTestPair(sessionToken: string, categories?: string[]): Promise<MiniAppTestPairResponse> {
+    const params = new URLSearchParams();
+    for (const category of categories ?? []) {
+      params.append("categories", category);
+    }
+    const suffix = params.toString();
+    return this.request<MiniAppTestPairResponse>(`/testpair${suffix ? `?${suffix}` : ""}`, {
+      method: "GET",
+      sessionToken
+    });
   }
 
   private action(path: string, sessionToken: string, chatId: number): Promise<MiniAppActionResponse> {

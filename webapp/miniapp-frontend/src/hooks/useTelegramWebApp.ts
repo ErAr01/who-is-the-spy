@@ -15,6 +15,7 @@ export interface TelegramContext {
   webApp: TelegramWebApp | null;
   initData: string;
   chatId: number | null;
+  mode: string | null;
 }
 
 export function useTelegramWebApp(): TelegramContext {
@@ -28,7 +29,8 @@ export function useTelegramWebApp(): TelegramContext {
     return {
       webApp,
       initData: webApp?.initData ?? "",
-      chatId: parseChatIdFromSearch() ?? webApp?.initDataUnsafe?.chat?.id ?? null
+      chatId: parseChatIdFromSearch() ?? webApp?.initDataUnsafe?.chat?.id ?? null,
+      mode: new URLSearchParams(window.location.search).get("mode")
     };
   }, []);
 }

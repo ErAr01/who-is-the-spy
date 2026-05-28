@@ -8,7 +8,7 @@ from time import time
 from types import SimpleNamespace
 from urllib.parse import urlencode
 from unittest import TestCase
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
@@ -181,3 +181,64 @@ class MiniAppApiIntegrationTest(TestCase):
         )
         self.assertEqual(forbidden_toggle.status_code, 403)
         self.assertEqual(forbidden_toggle.json()["error"]["code"], "admin_required")
+
+    def test_late_join_returns_note_and_round_membership_flag(self) -> None:
+        game = Game(
+            chat_id=701,
+            admin_id=1,
+            state=GameState.PLAYING,
+            mode=GameMode.IMAGE_DB,
+            players=[
+                Player(user_id=1, name="Admin"),
+                Player(user_id=2, name="P2"),
+                Player(user_id=3, name="P3"),
+            ],
+            round_player_ids=[1, 2, 3],
+            version=2,
+            updated_at_ts=2.0,
+        )
+        client, repo = self._build_client(game)
+        repo._started_users.update({1, 2, 3, 4})
+
+        headers_user4 = self._auth_headers(client, user_id=4, chat_id=701, name="User4")
+        joined = client.post("/api/v1/miniapp/join", json={"chat_id": 701}, headers=headers_user4)
+        self.assertEqual(joined.status_code, 200)
+        self.assertEqual(joined.json()["note_code"], "queued_for_next_round")
+
+        snapshot = client.get("/api/v1/miniapp/game", params={"chat_id": 701}, headers=headers_user4)
+        self.assertEqual(snapshot.status_code, 200)
+        self.assertTrue(snapshot.json()["snapshot"]["is_member"])
+        self.assertFalse(snapshot.json()["snapshot"]["is_in_current_round"])
+
+    def test_private_testpair_endpoint(self) -> None:
+        game = Game(
+            chat_id=1,
+            admin_id=1,
+            state=GameState.LOBBY,
+            mode=GameMode.IMAGE_DB,
+            players=[Player(user_id=1, name="Admin")],
+            version=1,
+            updated_at_ts=1.0,
+        )
+        client, repo = self._build_client(game)
+        repo._started_users.add(1)
+        headers = self._auth_headers(client, user_id=1, chat_id=1, name="Admin")
+
+        fake_provider = Mock()
+        fake_provider.get_random_image_pair.return_value = Mock(
+            theme="Все категории",
+            civilian="civilian-1",
+            civilian_name="Civilian",
+            civilian_wiki_url="https://w.civ",
+            spy="spy-1",
+            spy_name="Spy",
+            spy_wiki_url="https://w.spy",
+        )
+
+        with patch("src.miniapp.service.build_content_provider", return_value=fake_provider):
+            response = client.get("/api/v1/miniapp/testpair", headers=headers)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["civilian"]["card_id"], "civilian-1")
+        self.assertEqual(payload["spy"]["card_id"], "spy-1")
