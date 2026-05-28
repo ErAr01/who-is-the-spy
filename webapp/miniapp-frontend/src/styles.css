@@ -119,6 +119,13 @@ body {
   border-bottom: 0;
 }
 
+.list-inline-button {
+  width: auto;
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
 .button {
   display: inline-flex;
   align-items: center;

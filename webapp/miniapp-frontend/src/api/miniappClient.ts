@@ -47,6 +47,14 @@ export class MiniAppApiClient {
     return this.action("/leave", sessionToken, chatId);
   }
 
+  async kickPlayer(sessionToken: string, chatId: number, targetId: number): Promise<MiniAppActionResponse> {
+    return this.request<MiniAppActionResponse>("/lobby/kick", {
+      method: "POST",
+      sessionToken,
+      body: JSON.stringify({ chat_id: chatId, target_id: targetId })
+    });
+  }
+
   async toggleCategory(sessionToken: string, chatId: number, category: string): Promise<MiniAppActionResponse> {
     return this.request<MiniAppActionResponse>("/categories/toggle", {
       method: "POST",

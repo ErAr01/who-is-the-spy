@@ -191,6 +191,10 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
           impact("light");
           void actions.leave();
         }}
+        onKickPlayer={(targetId) => {
+          impact("medium");
+          void actions.kickPlayer(targetId);
+        }}
         onToggleCategory={(category) => {
           impact("light");
           void actions.toggleCategory(category);

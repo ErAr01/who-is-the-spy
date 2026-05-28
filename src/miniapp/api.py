@@ -29,6 +29,7 @@ from src.miniapp.dto import (
     MiniAppPlayerDTO,
     MiniAppUserDTO,
     MiniAppVoteRequest,
+    MiniAppKickPlayerRequest,
 )
 from src.miniapp.errors import MiniAppError
 from src.miniapp.service import GameService, MiniAppActionResult
@@ -184,6 +185,27 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
             executor=lambda: context.game_service.leave(
                 chat_id=payload.chat_id,
                 user_id=claims.user_id,
+            ),
+        )
+        return _build_action_response(result)
+
+    @router.post("/lobby/kick", response_model=MiniAppActionResponse)
+    async def lobby_kick(
+        request: Request,
+        payload: MiniAppKickPlayerRequest,
+        claims: MiniAppSessionClaims = Depends(_auth_dependency),
+    ) -> MiniAppActionResponse:
+        _ensure_chat_access(chat_id=payload.chat_id, claims=claims)
+        context = _get_context(request)
+        result = await _run_action(
+            context=context,
+            action_name="lobby/kick",
+            chat_id=payload.chat_id,
+            user_id=claims.user_id,
+            executor=lambda: context.game_service.kick_player(
+                chat_id=payload.chat_id,
+                user_id=claims.user_id,
+                target_id=payload.target_id,
             ),
         )
         return _build_action_response(result)

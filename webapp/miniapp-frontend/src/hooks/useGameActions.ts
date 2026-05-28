@@ -10,6 +10,7 @@ interface UseGameActionsResult {
   clearActionError: () => void;
   join: () => Promise<void>;
   leave: () => Promise<void>;
+  kickPlayer: (targetId: number) => Promise<void>;
   toggleCategory: (category: string) => Promise<void>;
   start: () => Promise<void>;
   repeatRound: () => Promise<void>;
@@ -52,6 +53,7 @@ export function useGameActions(
       clearActionError: () => setActionError(null),
       join: () => runAction("join", () => miniAppClient.join(sessionToken, chatId)),
       leave: () => runAction("leave", () => miniAppClient.leave(sessionToken, chatId)),
+      kickPlayer: (targetId: number) => runAction("kick_player", () => miniAppClient.kickPlayer(sessionToken, chatId, targetId)),
       toggleCategory: (category: string) =>
         runAction("toggle_category", () => miniAppClient.toggleCategory(sessionToken, chatId, category)),
       start: () => runAction("start", () => miniAppClient.start(sessionToken, chatId)),

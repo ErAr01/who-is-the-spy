@@ -42,6 +42,10 @@ class MiniAppVoteRequest(MiniAppBaseActionRequest):
     target_id: int
 
 
+class MiniAppKickPlayerRequest(MiniAppBaseActionRequest):
+    target_id: int
+
+
 class MiniAppActionResponse(BaseModel):
     ok: bool = True
     version: int

@@ -147,6 +147,45 @@ class GameService:
                 note_message="Вы покинули лобби.",
             )
 
+    async def kick_player(self, *, chat_id: int, user_id: int, target_id: int) -> MiniAppActionResult:
+        async with self._repo.chat_lock(chat_id):
+            game = await self._require_game(chat_id)
+            self._require_admin(game, user_id)
+            self._require_state(
+                game,
+                {GameState.LOBBY},
+                "kick_forbidden_state",
+                "Удалять игроков можно только в лобби.",
+            )
+            if target_id == game.admin_id:
+                raise MiniAppError(
+                    code="kick_admin_forbidden",
+                    message="Админа нельзя удалить из лобби.",
+                    status_code=409,
+                )
+            if target_id not in self._player_ids(game):
+                raise MiniAppError(
+                    code="kick_target_not_found",
+                    message="Игрок уже не найден в лобби.",
+                    status_code=404,
+                )
+
+            game.players = [player for player in game.players if player.user_id != target_id]
+            game.round_player_ids = [value for value in game.round_player_ids if value != target_id]
+            game.votes = {
+                voter_id: vote_target_id
+                for voter_id, vote_target_id in game.votes.items()
+                if voter_id != target_id and vote_target_id != target_id
+            }
+            touch_activity(game)
+            await self._repo.save_game(game)
+            return MiniAppActionResult(
+                version=game.version,
+                updated_at_ts=game.updated_at_ts,
+                note_code="player_removed",
+                note_message="Игрок удален из лобби.",
+            )
+
     async def toggle_category(self, *, chat_id: int, user_id: int, category: str) -> MiniAppActionResult:
         async with self._repo.chat_lock(chat_id):
             game = await self._require_game(chat_id)
