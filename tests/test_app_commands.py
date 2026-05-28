@@ -9,7 +9,7 @@ from src.handlers.private import open_private_miniapp
 
 
 class AppCommandsTest(IsolatedAsyncioTestCase):
-    async def test_group_app_command_sends_webapp_button(self) -> None:
+    async def test_group_app_command_sends_url_button(self) -> None:
         message = SimpleNamespace(
             chat=SimpleNamespace(id=-100555),
             answer=AsyncMock(),
@@ -22,7 +22,7 @@ class AppCommandsTest(IsolatedAsyncioTestCase):
         kwargs = message.answer.await_args.kwargs
         self.assertIn("reply_markup", kwargs)
         keyboard = kwargs["reply_markup"]
-        self.assertEqual(keyboard.inline_keyboard[0][0].web_app.url, "https://example.sslip.io?chat_id=-100555")
+        self.assertEqual(keyboard.inline_keyboard[0][0].url, "https://example.sslip.io?chat_id=-100555")
 
     async def test_private_app_command_uses_testpair_mode(self) -> None:
         message = SimpleNamespace(

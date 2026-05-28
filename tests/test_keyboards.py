@@ -62,17 +62,17 @@ class AdminButtonsKeyboardTest(TestCase):
         ]
         self.assertEqual(callback_data, ["postround:repeat:777", "postround:newcats:777"])
 
-    def test_lobby_keyboard_can_include_miniapp_webapp_button(self) -> None:
+    def test_lobby_keyboard_can_include_miniapp_url_button(self) -> None:
         keyboard = lobby_keyboard(
             chat_id=777,
             available_categories=["anime"],
             selected_categories=[],
             miniapp_url="https://example.sslip.io/?chat_id=777",
         )
-        web_app_urls = [
-            button.web_app.url
+        urls = [
+            button.url
             for row in keyboard.inline_keyboard
             for button in row
-            if button.web_app is not None
+            if button.url is not None
         ]
-        self.assertEqual(web_app_urls, ["https://example.sslip.io/?chat_id=777"])
+        self.assertEqual(urls, ["https://example.sslip.io/?chat_id=777"])

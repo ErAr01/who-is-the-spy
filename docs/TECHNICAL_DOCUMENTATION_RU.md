@@ -10,6 +10,7 @@
 4. [Конфигурация окружения и запуск](technical_documentation_ru/04_environment_and_setup.md)
 5. [Форматы данных и типичный workflow](technical_documentation_ru/05_data_formats_and_workflows.md)
 6. [Ошибки, развитие, тестирование и FAQ](technical_documentation_ru/06_operations_and_development.md)
+7. [Развертывание и обновление на сервере](technical_documentation_ru/07_server_deployment_and_update.md)
 
 ## Сопоставление со старой структурой
 

@@ -14,7 +14,7 @@ from src.handlers.admin_actions import close_voting, open_voting, start_round
 from src.game.models import Game, GameMode, GameState, Player
 from src.game.provider_factory import build_content_provider
 from src.handlers.callbacks import render_lobby_text
-from src.utils.keyboards import lobby_keyboard, miniapp_open_keyboard
+from src.utils.keyboards import lobby_keyboard, miniapp_open_keyboard_with_mode
 from src.utils.miniapp_links import build_miniapp_chat_url
 
 if TYPE_CHECKING:
@@ -208,7 +208,7 @@ async def open_group_miniapp(message: Message, settings: Settings) -> None:
         return
     await message.answer(
         "Открыть игру в Mini App для этого чата:",
-        reply_markup=miniapp_open_keyboard(miniapp_url),
+        reply_markup=miniapp_open_keyboard_with_mode(url=miniapp_url, use_web_app=False),
     )
 
 

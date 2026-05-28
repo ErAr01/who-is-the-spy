@@ -57,15 +57,14 @@ def lobby_keyboard(
     available_categories: list[str],
     selected_categories: list[str],
     miniapp_url: str | None = None,
+    *,
+    use_web_app_button: bool = False,
 ) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = [[InlineKeyboardButton(text="✅ Join", callback_data=f"join:{chat_id}")]]
     if miniapp_url:
         rows.append(
             [
-                InlineKeyboardButton(
-                    text="📱 Открыть Mini App",
-                    web_app=WebAppInfo(url=miniapp_url),
-                )
+                _miniapp_button("📱 Открыть Mini App", miniapp_url, use_web_app=use_web_app_button)
             ]
         )
     if not available_categories:
@@ -107,6 +106,21 @@ def post_round_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 
 
 def miniapp_open_keyboard(url: str, *, text: str = "📱 Открыть Mini App") -> InlineKeyboardMarkup:
+    return miniapp_open_keyboard_with_mode(url=url, text=text, use_web_app=True)
+
+
+def miniapp_open_keyboard_with_mode(
+    *,
+    url: str,
+    text: str = "📱 Открыть Mini App",
+    use_web_app: bool,
+) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))]]
+        inline_keyboard=[[_miniapp_button(text=text, url=url, use_web_app=use_web_app)]]
     )
+
+
+def _miniapp_button(text: str, url: str, *, use_web_app: bool) -> InlineKeyboardButton:
+    if use_web_app:
+        return InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))
+    return InlineKeyboardButton(text=text, url=url)
