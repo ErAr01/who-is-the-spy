@@ -389,7 +389,6 @@ async def choose_new_categories(callback: CallbackQuery, repo: GameRepo) -> None
     game.civilian_search_url = None
     game.spy_search_url = None
     game.votes = {}
-    game.speaking_order = []
     game.round_started_at_ts = None
     game.selected_categories = []
     game.available_categories = build_content_provider().get_available_categories()

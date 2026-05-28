@@ -2,11 +2,11 @@ aiogram==3.13.*
 redis>=5.0
 pydantic-settings>=2.0
 python-dotenv>=1.0
+fastapi>=0.115
+uvicorn>=0.30
 openai>=1.50
 pillow>=10.0
 typer>=0.12
 numpy>=1.26
 matplotlib>=3.9
 prometheus-client>=0.21
-torch>=2.5
-transformers>=4.48

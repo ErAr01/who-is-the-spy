@@ -51,8 +51,9 @@ class Game:
     available_categories: list[str] = field(default_factory=list)
     votes: dict[int, int] = field(default_factory=dict)
     lobby_message_id: int | None = None
-    speaking_order: list[int] = field(default_factory=list)
     round_started_at_ts: float | None = None
+    version: int = 0
+    updated_at_ts: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         raw = asdict(self)
@@ -84,10 +85,15 @@ class Game:
             available_categories=[str(v) for v in payload.get("available_categories", [])],
             votes={int(k): int(v) for k, v in payload.get("votes", {}).items()},
             lobby_message_id=payload.get("lobby_message_id"),
-            speaking_order=[int(v) for v in payload.get("speaking_order", [])],
             round_started_at_ts=(
                 float(payload["round_started_at_ts"])
                 if payload.get("round_started_at_ts") is not None
+                else None
+            ),
+            version=int(payload.get("version", 0)),
+            updated_at_ts=(
+                float(payload["updated_at_ts"])
+                if payload.get("updated_at_ts") is not None
                 else None
             ),
         )

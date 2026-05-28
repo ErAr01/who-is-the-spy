@@ -1,13 +1,15 @@
 import asyncio
 import logging
 
+import uvicorn
+
 from src.analytics import AnalyticsErrorsMiddleware, CompositeAnalyticsEmitter, StdoutJsonAnalyticsEmitter
 from src.bot import build_app
 from src.config import get_settings
-from src.game.repo import GameRepo
 from src.handlers.callbacks import router as callbacks_router
 from src.handlers.group import router as group_router
 from src.handlers.private import router as private_router
+from src.miniapp import build_miniapp_api
 from src.observability import PrometheusAnalyticsEmitter, PrometheusUpdatesMiddleware, start_metrics_http_server
 
 
@@ -22,7 +24,7 @@ async def run() -> None:
         start_metrics_http_server(settings.metrics_host, settings.metrics_port)
 
     app = build_app(settings)
-    repo = GameRepo(app.redis)
+    repo = app.redis_repo
     analytics_emitters = [StdoutJsonAnalyticsEmitter()]
     if settings.metrics_enabled:
         analytics_emitters.append(PrometheusAnalyticsEmitter())
@@ -37,9 +39,26 @@ async def run() -> None:
     app.dispatcher.include_router(group_router)
     app.dispatcher.include_router(callbacks_router)
 
+    miniapp_server: uvicorn.Server | None = None
+    miniapp_task: asyncio.Task[None] | None = None
+    if settings.miniapp_enabled:
+        miniapp_api = build_miniapp_api(settings=settings, app_context=app, analytics_emitter=analytics_emitter)
+        miniapp_server = uvicorn.Server(
+            uvicorn.Config(
+                app=miniapp_api,
+                host=settings.miniapp_host,
+                port=settings.miniapp_port,
+                log_level=settings.log_level.lower(),
+            )
+        )
+        miniapp_task = asyncio.create_task(miniapp_server.serve())
+
     try:
         await app.dispatcher.start_polling(app.bot)
     finally:
+        if miniapp_server is not None and miniapp_task is not None:
+            miniapp_server.should_exit = True
+            await miniapp_task
         await app.bot.session.close()
         await app.redis.aclose()
         await app.storage_redis.aclose()

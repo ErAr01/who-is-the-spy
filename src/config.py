@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     metrics_enabled: bool = Field(default=False, alias="METRICS_ENABLED")
     metrics_host: str = Field(default="0.0.0.0", alias="METRICS_HOST")
     metrics_port: int = Field(default=8001, alias="METRICS_PORT")
+    miniapp_enabled: bool = Field(default=False, alias="MINIAPP_ENABLED")
+    miniapp_host: str = Field(default="0.0.0.0", alias="MINIAPP_HOST")
+    miniapp_port: int = Field(default=8000, alias="MINIAPP_PORT")
+    miniapp_init_data_ttl_seconds: int = Field(default=300, alias="MINIAPP_INIT_DATA_TTL_SECONDS")
+    miniapp_session_ttl_seconds: int = Field(default=900, alias="MINIAPP_SESSION_TTL_SECONDS")
+    miniapp_session_secret: SecretStr | None = Field(default=None, alias="MINIAPP_SESSION_SECRET")
 
     model_config = SettingsConfigDict(
         env_file=".env",

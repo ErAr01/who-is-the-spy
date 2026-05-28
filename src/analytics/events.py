@@ -22,6 +22,10 @@ class AnalyticsEventName(StrEnum):
     ROLE_DELIVERY_FAILED = "role_delivery_failed"
     CONTENT_SELECTION_FAILED = "content_selection_failed"
     HANDLER_EXCEPTION = "handler_exception"
+    MINIAPP_AUTH_SUCCESS = "miniapp-auth-success"
+    MINIAPP_AUTH_FAIL = "miniapp-auth-fail"
+    MINIAPP_ACTION_FAILED = "miniapp-action-failed"
+    MINIAPP_POLLING_LATENCY = "miniapp-polling-latency"
 
 
 @dataclass(slots=True, frozen=True)

@@ -2,7 +2,6 @@ import random
 from dataclasses import dataclass
 from html import escape
 from time import time
-from typing import Iterable
 from urllib.parse import quote_plus
 
 from aiogram import Bot
@@ -26,9 +25,6 @@ def prepare_game_round(game: Game, content: ContentProvider) -> Game:
         raise ValueError("Game has no players")
 
     game.spy_id = _pick_spy_id(game.players, previous_spy_id=game.spy_id)
-    if not _is_valid_speaking_order(game.speaking_order, game.players):
-        game.speaking_order = [player.user_id for player in game.players]
-        random.shuffle(game.speaking_order)
 
     pair = content.get_random_image_pair(game.selected_categories or None, chat_id=game.chat_id)
     game.theme = pair.theme
@@ -124,11 +120,6 @@ def player_name_by_id(game: Game, user_id: int) -> str:
     return str(user_id)
 
 
-def speaking_order_lines(game: Game) -> Iterable[str]:
-    for index, user_id in enumerate(game.speaking_order, start=1):
-        yield f"{index}. {player_name_by_id(game, user_id)}"
-
-
 def _build_role_caption(game: Game, user_id: int) -> str:
     hero_name = game.spy_name if user_id == game.spy_id else game.civilian_name
     return f"<b>{escape(hero_name or 'Персонаж')}</b>"
@@ -186,10 +177,3 @@ def _pick_spy_id(players: list[Player], previous_spy_id: int | None) -> int:
     if not candidate_ids:
         candidate_ids = [player.user_id for player in players]
     return random.choice(candidate_ids)
-
-
-def _is_valid_speaking_order(order: list[int], players: list[Player]) -> bool:
-    if not order:
-        return False
-    player_ids = {player.user_id for player in players}
-    return len(order) == len(players) and set(order) == player_ids

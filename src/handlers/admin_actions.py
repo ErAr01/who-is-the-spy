@@ -15,7 +15,6 @@ from src.game.engine import (
     finish_voting,
     prepare_game_round,
     send_roles,
-    speaking_order_lines,
 )
 from src.game.models import Game, GameState
 from src.game.provider_factory import build_content_provider
@@ -162,9 +161,9 @@ async def start_round(
         except (TelegramBadRequest, TelegramForbiddenError):
             pass
         await responder.answer(round_rules_text())
-        order = "\n".join(speaking_order_lines(game))
         await responder.answer(
-            f"Порядок выступлений:\n{order}",
+            "Вы можете определить порядок хода самостоятельно, но если среди вас есть игрок по имени Даша, "
+            "то она ходит первой",
             reply_markup=admin_controls_keyboard(game),
         )
 

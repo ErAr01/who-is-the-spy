@@ -1,0 +1,268 @@
+:root {
+  color-scheme: light dark;
+  --bg: var(--tg-theme-bg-color, #10131a);
+  --text: var(--tg-theme-text-color, #f5f7ff);
+  --hint: var(--tg-theme-hint-color, #9ea6bd);
+  --button: var(--tg-theme-button-color, #4f7cff);
+  --button-text: var(--tg-theme-button-text-color, #ffffff);
+  --card: color-mix(in oklab, var(--bg) 85%, white 15%);
+  --danger: #d64545;
+  --ok: #2ca36b;
+  --warning: #d29a2a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 16px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.status-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+  border: 1px solid color-mix(in oklab, var(--text) 12%, transparent);
+}
+
+.card h1,
+.card h2,
+.card h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--text) 12%, transparent);
+}
+
+.list-item:last-child {
+  border-bottom: 0;
+}
+
+.button {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.button-primary {
+  background: var(--button);
+  color: var(--button-text);
+}
+
+.button-secondary {
+  background: color-mix(in oklab, var(--button) 20%, var(--bg) 80%);
+  color: var(--text);
+}
+
+.button-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.actions-col {
+  display: grid;
+  gap: 8px;
+}
+
+.action-with-reason {
+  display: grid;
+  gap: 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  background: color-mix(in oklab, var(--bg) 50%, var(--text) 20%);
+}
+
+.chip-state {
+  background: color-mix(in oklab, var(--button) 25%, var(--bg) 75%);
+}
+
+.chip-loading,
+.chip-reconnecting {
+  background: color-mix(in oklab, var(--warning) 45%, var(--bg) 55%);
+}
+
+.chip-stale {
+  background: color-mix(in oklab, var(--danger) 45%, var(--bg) 55%);
+}
+
+.chip-fresh {
+  background: color-mix(in oklab, var(--ok) 45%, var(--bg) 55%);
+}
+
+.chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip-button {
+  border: 1px solid color-mix(in oklab, var(--text) 16%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  padding: 8px 12px;
+  min-height: 40px;
+}
+
+.chip-button.active {
+  background: color-mix(in oklab, var(--button) 28%, var(--bg) 72%);
+}
+
+.muted,
+.hint {
+  color: var(--hint);
+}
+
+.error-text {
+  color: #ff9898;
+}
+
+.error-block {
+  border-color: color-mix(in oklab, var(--danger) 48%, transparent);
+}
+
+.role-card .role-name {
+  margin: 0 0 4px;
+  font-weight: 700;
+}
+
+.role-card .role-payload {
+  margin-top: 0;
+}
+
+.toast-host {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 16px;
+  display: grid;
+  gap: 8px;
+  z-index: 1000;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in oklab, var(--bg) 55%, black 45%);
+  border: 1px solid color-mix(in oklab, var(--text) 15%, transparent);
+}
+
+.toast button {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.toast-error {
+  border-color: color-mix(in oklab, var(--danger) 45%, transparent);
+}
+
+.toast-success {
+  border-color: color-mix(in oklab, var(--ok) 45%, transparent);
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 58%);
+  display: grid;
+  align-items: end;
+  padding: 12px;
+  z-index: 1200;
+}
+
+.dialog {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 14px;
+  border: 1px solid color-mix(in oklab, var(--text) 15%, transparent);
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ui-highlight {
+  animation: highlight 180ms ease;
+}
+
+.ui-pulse {
+  animation: pulse 180ms ease;
+}
+
+@keyframes highlight {
+  from {
+    filter: brightness(1.08);
+  }
+  to {
+    filter: brightness(1);
+  }
+}
+
+@keyframes pulse {
+  from {
+    transform: scale(0.995);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@media (min-width: 600px) {
+  .page {
+    padding: 24px;
+  }
+}

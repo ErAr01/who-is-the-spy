@@ -114,6 +114,12 @@ promtool check config deploy/observability/prometheus/prometheus.yml
 ```env
 REDIS_URL=redis://localhost:6379/0
 METRICS_ENABLED=false
+MINIAPP_ENABLED=true
+MINIAPP_HOST=0.0.0.0
+MINIAPP_PORT=8000
+MINIAPP_INIT_DATA_TTL_SECONDS=300
+MINIAPP_SESSION_TTL_SECONDS=900
+MINIAPP_SESSION_SECRET=replace_with_strong_secret
 ```
 
 Подними Redis и запусти бота:
@@ -124,6 +130,11 @@ source .venv/bin/activate
 pip install -r requirements.txt
 python -m src.main
 ```
+
+При `MINIAPP_ENABLED=true` бот продолжает polling, а HTTP API Mini App поднимается параллельно в том же процессе:
+- Базовый префикс: `http://localhost:8000/api/v1/miniapp`
+- MVP эндпоинты: `auth`, `game`, `join`, `categories/toggle`, `start`, `voting/open`, `votes`, `voting/close`, `cancel`, `me/role`
+- Для long-poll клиента Mini App поддержан протокол `since_version` + `no_change` в `GET /game`.
 
 ### Опционально: self-hosted PostHog (заготовка)
 
@@ -222,6 +233,10 @@ IMAGE_EMBEDDING_DB_PATH=data/images/image_embeddings.db
 - `role_delivery_failed`
 - `content_selection_failed`
 - `handler_exception`
+- `miniapp-auth-success`
+- `miniapp-auth-fail`
+- `miniapp-action-failed`
+- `miniapp-polling-latency`
 
 ### Что должно быть в payload
 

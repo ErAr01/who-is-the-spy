@@ -29,3 +29,12 @@ env/
 dist/
 build/
 *.log
+
+# Data: keep only selected artifacts in git
+data/**
+!data/
+!data/images/
+!data/images/cards_prod.db
+!data/images/image_embeddings.db
+!data/embeddings_tracking/
+!data/embeddings_tracking/**

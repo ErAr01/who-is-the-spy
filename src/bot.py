@@ -7,6 +7,7 @@ from aiogram.fsm.storage.redis import RedisStorage
 from redis.asyncio import Redis
 
 from src.config import Settings
+from src.game.repo import GameRepo
 
 
 @dataclass(slots=True)
@@ -15,6 +16,7 @@ class AppContext:
     dispatcher: Dispatcher
     redis: Redis
     storage_redis: Redis
+    redis_repo: GameRepo
 
 
 def build_app(settings: Settings) -> AppContext:
@@ -26,4 +28,11 @@ def build_app(settings: Settings) -> AppContext:
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    return AppContext(bot=bot, dispatcher=dispatcher, redis=redis, storage_redis=storage_redis)
+    redis_repo = GameRepo(redis)
+    return AppContext(
+        bot=bot,
+        dispatcher=dispatcher,
+        redis=redis,
+        storage_redis=storage_redis,
+        redis_repo=redis_repo,
+    )

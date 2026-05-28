@@ -20,6 +20,8 @@ services:
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
       METRICS_HOST: ${METRICS_HOST:-0.0.0.0}
       METRICS_PORT: ${METRICS_PORT:-8001}
+    ports:
+      - "${MINIAPP_PORT:-8000}:${MINIAPP_PORT:-8000}"
     depends_on:
       - redis
     restart: unless-stopped
