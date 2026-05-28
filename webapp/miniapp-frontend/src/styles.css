@@ -2,8 +2,8 @@
   --bg: color-mix(in oklab, var(--tg-theme-bg-color, #120534) 40%, var(--color-bg) 60%);
   --surface: var(--color-surface);
   --surface-elevated: var(--color-surface-elevated);
-  --text: color-mix(in oklab, var(--tg-theme-text-color, #f5f4ff) 25%, var(--color-text-primary) 75%);
-  --hint: color-mix(in oklab, var(--tg-theme-hint-color, #a29ac9) 35%, var(--color-text-secondary) 65%);
+  --text: color-mix(in oklab, var(--tg-theme-text-color, #f5f4ff) 12%, var(--color-text-primary) 88%);
+  --hint: color-mix(in oklab, var(--tg-theme-hint-color, #a29ac9) 22%, var(--color-text-secondary) 78%);
   --button: color-mix(in oklab, var(--tg-theme-button-color, #6a41ff) 35%, var(--color-brand-primary) 65%);
   --button-text: var(--tg-theme-button-text-color, #fff);
 }
@@ -83,7 +83,7 @@ body {
   background:
     linear-gradient(160deg, color-mix(in oklab, var(--surface-elevated) 80%, white 20%), var(--surface));
   border-radius: var(--radius-lg);
-  border: 1px solid rgb(255 255 255 / 12%);
+  border: 1px solid rgb(255 255 255 / 18%);
   padding: var(--space-4);
   box-shadow: var(--shadow-card);
 }
@@ -277,6 +277,7 @@ select:focus-visible {
 .hint {
   color: var(--hint);
   margin: 0;
+  font-weight: 500;
 }
 
 .error-text {
@@ -372,7 +373,7 @@ select:focus-visible {
 
 .dialog p {
   margin: 0 0 var(--space-3);
-  color: var(--hint);
+  color: var(--text);
 }
 
 .dialog-actions {
@@ -420,4 +421,37 @@ select:focus-visible {
     max-width: 420px;
     right: var(--space-6);
   }
+}
+
+.rules-help-button {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  right: 12px;
+  z-index: 1300;
+  min-height: 34px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--surface-elevated) 84%, white 16%);
+  color: var(--text);
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: var(--shadow-soft);
+}
+
+.rules-dialog {
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.rules-dialog-content {
+  overflow-y: auto;
+  padding-right: 4px;
+  margin-bottom: var(--space-2);
+}
+
+.rules-dialog-content p {
+  color: var(--text);
+  line-height: 1.45;
 }
