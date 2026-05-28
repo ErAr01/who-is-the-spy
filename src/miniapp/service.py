@@ -292,7 +292,7 @@ class GameService:
         *,
         user_id: int,
         categories: list[str] | None = None,
-    ) -> dict[str, str | None]:
+    ) -> dict[str, object]:
         if not await self._repo.has_user_started(user_id):
             raise MiniAppError(
                 code="private_start_required",
@@ -300,21 +300,34 @@ class GameService:
                 status_code=403,
             )
         provider = build_content_provider(self._settings)
+        available_categories = provider.get_available_categories()
+        normalized_categories = self._normalize_categories(categories, available_categories)
         try:
-            pair = provider.get_random_image_pair(categories or None)
+            pair = provider.get_random_image_pair(normalized_categories or None)
         except ValueError as exc:
             raise MiniAppError(code="testpair_unavailable", message=str(exc), status_code=409) from exc
         return {
             "theme": pair.theme,
+            "available_categories": available_categories,
+            "selected_categories": normalized_categories,
             "civilian_id": pair.civilian,
             "civilian_name": pair.civilian_name,
+            "civilian_image_url": f"/api/v1/miniapp/cards/{pair.civilian}/image",
             "civilian_wiki_url": pair.civilian_wiki_url,
             "civilian_search_url": build_google_search_url(pair.civilian_name),
             "spy_id": pair.spy,
             "spy_name": pair.spy_name,
+            "spy_image_url": f"/api/v1/miniapp/cards/{pair.spy}/image",
             "spy_wiki_url": pair.spy_wiki_url,
             "spy_search_url": build_google_search_url(pair.spy_name),
         }
+
+    def get_card_image(self, card_id: str) -> bytes:
+        provider = build_content_provider(self._settings)
+        image_bytes = provider.get_image_bytes(card_id)
+        if image_bytes is None:
+            raise MiniAppError(code="card_image_not_found", message="Изображение карточки не найдено.", status_code=404)
+        return image_bytes
 
     @staticmethod
     def _player_ids(game: Game) -> set[int]:
@@ -356,3 +369,18 @@ class GameService:
     def _require_state(game: Game, allowed: set[GameState], code: str, message: str) -> None:
         if game.state not in allowed:
             raise MiniAppError(code=code, message=message, status_code=409)
+
+    @staticmethod
+    def _normalize_categories(categories: list[str] | None, available_categories: list[str]) -> list[str]:
+        if not categories:
+            return []
+        available = {value.lower() for value in available_categories}
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in categories:
+            cleaned = value.strip().lower()
+            if not cleaned or cleaned in seen or cleaned not in available:
+                continue
+            seen.add(cleaned)
+            normalized.append(cleaned)
+        return normalized

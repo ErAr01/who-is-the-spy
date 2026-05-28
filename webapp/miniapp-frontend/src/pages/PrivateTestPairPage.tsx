@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { mapError } from "../api/errorMap";
 import { miniAppClient } from "../api/miniappClient";
@@ -13,13 +13,17 @@ export function PrivateTestPairPage({ sessionToken, onSessionExpired }: Props) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [pair, setPair] = useState<MiniAppTestPairResponse | null>(null);
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
   const generate = async () => {
     setPending(true);
     setError(null);
     try {
-      const payload = await miniAppClient.getTestPair(sessionToken);
+      const payload = await miniAppClient.getTestPair(sessionToken, selectedCategories);
       setPair(payload);
+      setAvailableCategories(payload.available_categories);
+      setSelectedCategories(payload.selected_categories);
     } catch (requestError) {
       const apiError = requestError as ApiError;
       setError(apiError);
@@ -30,6 +34,19 @@ export function PrivateTestPairPage({ sessionToken, onSessionExpired }: Props) {
       setPending(false);
     }
   };
+
+  const toggleCategory = (category: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category].sort()
+    );
+  };
+
+  useEffect(() => {
+    if (pair || pending) {
+      return;
+    }
+    void generate();
+  }, [pair, pending]);
 
   return (
     <main className="page">
@@ -42,6 +59,26 @@ export function PrivateTestPairPage({ sessionToken, onSessionExpired }: Props) {
           {pending ? "Генерируем..." : "Сгенерировать пару"}
         </button>
       </section>
+
+      {availableCategories.length ? (
+        <section className="card">
+          <h2>Категории</h2>
+          <p className="muted">Если ничего не выбрано, используются все категории.</p>
+          <div className="chip-grid">
+            {availableCategories.map((category) => (
+              <button
+                key={category}
+                type="button"
+                className={`chip-button ${selectedCategories.includes(category) ? "active" : ""}`}
+                onClick={() => toggleCategory(category)}
+                disabled={pending}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {error ? (
         <section className="card error-block" role="alert">
@@ -60,6 +97,9 @@ export function PrivateTestPairPage({ sessionToken, onSessionExpired }: Props) {
 
           <section className="card">
             <h2>Мирный</h2>
+            {pair.civilian.image_url ? (
+              <img className="card-image" src={pair.civilian.image_url} alt={pair.civilian.name} loading="lazy" />
+            ) : null}
             <p>
               <strong>{pair.civilian.name}</strong> ({pair.civilian.card_id})
             </p>
@@ -79,6 +119,7 @@ export function PrivateTestPairPage({ sessionToken, onSessionExpired }: Props) {
 
           <section className="card">
             <h2>Шпион</h2>
+            {pair.spy.image_url ? <img className="card-image" src={pair.spy.image_url} alt={pair.spy.name} loading="lazy" /> : null}
             <p>
               <strong>{pair.spy.name}</strong> ({pair.spy.card_id})
             </p>

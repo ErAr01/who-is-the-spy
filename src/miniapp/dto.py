@@ -89,11 +89,14 @@ class MiniAppRoleResponse(BaseModel):
 class MiniAppTestPairCardDTO(BaseModel):
     card_id: str
     name: str
+    image_url: str | None = None
     wiki_url: str | None = None
     search_url: str | None = None
 
 
 class MiniAppTestPairResponse(BaseModel):
     theme: str
+    available_categories: list[str]
+    selected_categories: list[str]
     civilian: MiniAppTestPairCardDTO
     spy: MiniAppTestPairCardDTO

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Awaitable, Callable, TypeVar
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.analytics import AnalyticsEmitter, AnalyticsEvent, AnalyticsEventName
@@ -317,19 +317,29 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
         )
         return MiniAppTestPairResponse(
             theme=payload["theme"],
+            available_categories=payload["available_categories"],
+            selected_categories=payload["selected_categories"],
             civilian=MiniAppTestPairCardDTO(
                 card_id=payload["civilian_id"],
                 name=payload["civilian_name"],
+                image_url=payload["civilian_image_url"],
                 wiki_url=payload["civilian_wiki_url"],
                 search_url=payload["civilian_search_url"],
             ),
             spy=MiniAppTestPairCardDTO(
                 card_id=payload["spy_id"],
                 name=payload["spy_name"],
+                image_url=payload["spy_image_url"],
                 wiki_url=payload["spy_wiki_url"],
                 search_url=payload["spy_search_url"],
             ),
         )
+
+    @router.get("/cards/{card_id}/image")
+    async def card_image(card_id: str, request: Request) -> Response:
+        context = _get_context(request)
+        image_bytes = context.game_service.get_card_image(card_id)
+        return Response(content=image_bytes, media_type="image/jpeg")
 
     app.include_router(router)
     return app
@@ -418,3 +428,5 @@ def _build_action_response(result: MiniAppActionResult) -> MiniAppActionResponse
         note_code=result.note_code,
         note_message=result.note_message,
     )
+
+

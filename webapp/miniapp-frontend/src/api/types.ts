@@ -65,12 +65,15 @@ export interface MiniAppRoleResponse {
 export interface MiniAppTestPairCard {
   card_id: string;
   name: string;
+  image_url: string | null;
   wiki_url: string | null;
   search_url: string | null;
 }
 
 export interface MiniAppTestPairResponse {
   theme: string;
+  available_categories: string[];
+  selected_categories: string[];
   civilian: MiniAppTestPairCard;
   spy: MiniAppTestPairCard;
 }
