@@ -63,6 +63,10 @@ export class MiniAppApiClient {
     return this.action("/round/repeat", sessionToken, chatId);
   }
 
+  async chooseNewCategories(sessionToken: string, chatId: number): Promise<MiniAppActionResponse> {
+    return this.action("/round/new-categories", sessionToken, chatId);
+  }
+
   async openVoting(sessionToken: string, chatId: number): Promise<MiniAppActionResponse> {
     return this.action("/voting/open", sessionToken, chatId);
   }

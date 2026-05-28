@@ -10,6 +10,7 @@ interface Props {
   pendingAction: string | null;
   onRevealRoundRoles: () => void;
   onRepeatRound: () => void;
+  onChooseNewCategories: () => void;
   onCancel: () => void;
 }
 
@@ -27,6 +28,7 @@ export function FinishedScreen({
   pendingAction,
   onRevealRoundRoles,
   onRepeatRound,
+  onChooseNewCategories,
   onCancel
 }: Props) {
   const [showCharacterRoles, setShowCharacterRoles] = useState(false);
@@ -99,6 +101,13 @@ export function FinishedScreen({
             disabled: !snapshot.is_admin || pendingAction !== null,
             disabledReason: !snapshot.is_admin ? "Только админ может запустить следующий раунд" : undefined,
             onClick: onRepeatRound
+          },
+          {
+            key: "new-categories",
+            label: "Новые темы",
+            disabled: !snapshot.is_admin || pendingAction !== null,
+            disabledReason: !snapshot.is_admin ? "Только админ может выбрать новые темы" : undefined,
+            onClick: onChooseNewCategories
           },
           {
             key: "cancel-game",

@@ -170,6 +170,10 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
             impact("medium");
             void actions.repeatRound();
           }}
+          onChooseNewCategories={() => {
+            impact("medium");
+            void actions.chooseNewCategories();
+          }}
           onCancel={() => setShowCancelConfirm(true)}
         />
       );

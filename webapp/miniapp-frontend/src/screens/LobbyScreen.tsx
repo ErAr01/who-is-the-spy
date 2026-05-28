@@ -13,7 +13,15 @@ interface Props {
   onCancel: () => void;
 }
 
-export function LobbyScreen({ snapshot, pendingAction, onJoin, onLeave, onToggleCategory, onStart, onCancel }: Props) {
+export function LobbyScreen({
+  snapshot,
+  pendingAction,
+  onJoin,
+  onLeave,
+  onToggleCategory,
+  onStart,
+  onCancel
+}: Props) {
   const isAdmin = snapshot.is_admin;
   const isMember = snapshot.is_member;
   const waitsNextRound = isMember && !snapshot.is_in_current_round;

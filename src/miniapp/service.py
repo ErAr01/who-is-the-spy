@@ -86,12 +86,6 @@ class GameService:
                 "join_forbidden_state",
                 "Сейчас нельзя присоединиться к игре.",
             )
-            if not await self._repo.has_user_started(user_id):
-                raise MiniAppError(
-                    code="private_start_required",
-                    message="Сначала напиши боту в личку: /start.",
-                    status_code=403,
-                )
             if user_id not in self._player_ids(game):
                 game.players.append(Player(user_id=user_id, name=name))
                 touch_activity(game)
@@ -254,6 +248,45 @@ class GameService:
                 deliver_private_roles=False,
             )
             return MiniAppActionResult(version=game.version, updated_at_ts=game.updated_at_ts)
+
+    async def choose_new_categories(self, *, chat_id: int, user_id: int) -> MiniAppActionResult:
+        async with self._repo.chat_lock(chat_id):
+            game = await self._require_game(chat_id)
+            self._require_admin(game, user_id)
+            self._require_state(
+                game,
+                {GameState.FINISHED},
+                "new_categories_forbidden_state",
+                "Новые темы можно выбрать только после завершения раунда.",
+            )
+
+            game.state = GameState.LOBBY
+            game.spy_id = None
+            game.theme = None
+            game.civilian_payload = None
+            game.spy_payload = None
+            game.civilian_name = None
+            game.spy_name = None
+            game.civilian_wiki_url = None
+            game.spy_wiki_url = None
+            game.civilian_search_url = None
+            game.spy_search_url = None
+            game.votes = {}
+            game.last_voted_out_id = None
+            game.last_is_spy_caught = None
+            game.last_round_duration_seconds = None
+            game.round_player_ids = []
+            game.round_started_at_ts = None
+            game.selected_categories = []
+            game.available_categories = build_content_provider(self._settings).get_available_categories()
+            touch_activity(game)
+            await self._repo.save_game(game)
+            return MiniAppActionResult(
+                version=game.version,
+                updated_at_ts=game.updated_at_ts,
+                note_code="categories_reset",
+                note_message="Раунд завершен. Выберите новые темы и запускайте игру снова.",
+            )
 
     async def open_voting(self, *, chat_id: int, user_id: int) -> MiniAppActionResult:
         async with self._repo.chat_lock(chat_id):
@@ -481,12 +514,6 @@ class GameService:
         user_id: int,
         categories: list[str] | None = None,
     ) -> dict[str, object]:
-        if not await self._repo.has_user_started(user_id):
-            raise MiniAppError(
-                code="private_start_required",
-                message="Сначала напиши боту в личку: /start.",
-                status_code=403,
-            )
         provider = build_content_provider(self._settings)
         available_categories = provider.get_available_categories()
         normalized_categories = self._normalize_categories(categories, available_categories)
@@ -553,9 +580,7 @@ class GameService:
             if game is None:
                 provider = build_content_provider(self._settings)
                 admin_id = await self._resolve_group_admin_id(chat_id=chat_id, fallback_user_id=user_id)
-                players: list[Player] = []
-                if await self._repo.has_user_started(user_id):
-                    players.append(Player(user_id=user_id, name=user_name))
+                players: list[Player] = [Player(user_id=user_id, name=user_name)]
                 game = Game(
                     chat_id=chat_id,
                     admin_id=admin_id,

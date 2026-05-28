@@ -13,6 +13,7 @@ interface UseGameActionsResult {
   toggleCategory: (category: string) => Promise<void>;
   start: () => Promise<void>;
   repeatRound: () => Promise<void>;
+  chooseNewCategories: () => Promise<void>;
   openVoting: () => Promise<void>;
   closeVoting: () => Promise<void>;
   vote: (targetId: number) => Promise<void>;
@@ -55,6 +56,8 @@ export function useGameActions(
         runAction("toggle_category", () => miniAppClient.toggleCategory(sessionToken, chatId, category)),
       start: () => runAction("start", () => miniAppClient.start(sessionToken, chatId)),
       repeatRound: () => runAction("repeat_round", () => miniAppClient.repeatRound(sessionToken, chatId)),
+      chooseNewCategories: () =>
+        runAction("round_new_categories", () => miniAppClient.chooseNewCategories(sessionToken, chatId)),
       openVoting: () => runAction("open_voting", () => miniAppClient.openVoting(sessionToken, chatId)),
       closeVoting: () => runAction("close_voting", () => miniAppClient.closeVoting(sessionToken, chatId)),
       vote: (targetId: number) => runAction("vote", () => miniAppClient.vote(sessionToken, chatId, targetId)),
