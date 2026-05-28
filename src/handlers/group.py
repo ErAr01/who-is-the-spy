@@ -53,8 +53,8 @@ async def new_game(
         available_categories=provider.get_available_categories(),
     )
     touch_activity(game)
-
-    miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=message.bot.username, chat_id=game.chat_id)
+    bot_username = await _resolve_bot_username(message.bot)
+    miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=bot_username, chat_id=game.chat_id)
     lobby_message = await message.answer(
         render_lobby_text(game.chat_id, game.players, game.selected_categories),
         reply_markup=lobby_keyboard(
@@ -202,7 +202,8 @@ async def cancel_game(message: Message, repo: GameRepo, analytics_emitter: Analy
 
 @router.message(Command("app"))
 async def open_group_miniapp(message: Message, settings: Settings) -> None:
-    miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=message.bot.username, chat_id=message.chat.id)
+    bot_username = await _resolve_bot_username(message.bot)
+    miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=bot_username, chat_id=message.chat.id)
     if not miniapp_url:
         await message.answer("Mini App URL не настроен. Заполните MINIAPP_PUBLIC_URL в .env.")
         return
@@ -227,3 +228,8 @@ def _build_group_miniapp_url(*, settings: Settings, bot_username: str | None, ch
         short_name=settings.miniapp_short_name,
         chat_id=chat_id,
     ) or build_miniapp_chat_url(settings.miniapp_public_url, chat_id)
+
+
+async def _resolve_bot_username(bot: Bot) -> str | None:
+    me = await bot.get_me()
+    return me.username

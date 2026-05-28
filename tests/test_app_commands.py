@@ -12,7 +12,7 @@ class AppCommandsTest(IsolatedAsyncioTestCase):
     async def test_group_app_command_sends_url_button(self) -> None:
         message = SimpleNamespace(
             chat=SimpleNamespace(id=-100555),
-            bot=SimpleNamespace(username="who_is_spy_game_bot"),
+            bot=SimpleNamespace(get_me=AsyncMock(return_value=SimpleNamespace(username="who_is_spy_game_bot"))),
             answer=AsyncMock(),
         )
         settings = SimpleNamespace(miniapp_public_url="https://example.sslip.io", miniapp_short_name="app")

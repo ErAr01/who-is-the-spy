@@ -80,7 +80,8 @@ async def join_game(
             )
         )
 
-    miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=callback.bot.username, chat_id=game.chat_id)
+    bot_username = await _resolve_bot_username(callback.bot)
+    miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=bot_username, chat_id=game.chat_id)
     if callback.message and game.state == GameState.LOBBY:
         await callback.message.edit_text(
             render_lobby_text(game.chat_id, game.players, game.selected_categories),
@@ -136,7 +137,8 @@ async def toggle_category(
             payload={"category": category, "selected_categories": list(game.selected_categories)},
         )
     )
-    miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=callback.bot.username, chat_id=game.chat_id)
+    bot_username = await _resolve_bot_username(callback.bot)
+    miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=bot_username, chat_id=game.chat_id)
     if callback.message:
         await callback.message.edit_text(
             render_lobby_text(game.chat_id, game.players, game.selected_categories),
@@ -222,9 +224,10 @@ async def admin_start_round(
         return
     if await _reset_lobby_if_idle(game=game, repo=repo, settings=settings):
         if callback.message:
+            bot_username = await _resolve_bot_username(callback.bot)
             miniapp_url = _build_group_miniapp_url(
                 settings=settings,
-                bot_username=callback.bot.username,
+                bot_username=bot_username,
                 chat_id=game.chat_id,
             )
             await callback.message.answer(
@@ -385,9 +388,10 @@ async def repeat_round(
         return
     if await _reset_lobby_if_idle(game=game, repo=repo, settings=settings):
         if callback.message:
+            bot_username = await _resolve_bot_username(callback.bot)
             miniapp_url = _build_group_miniapp_url(
                 settings=settings,
-                bot_username=callback.bot.username,
+                bot_username=bot_username,
                 chat_id=game.chat_id,
             )
             await callback.message.answer(
@@ -468,7 +472,8 @@ async def choose_new_categories(callback: CallbackQuery, repo: GameRepo, setting
     await repo.save_game(game)
 
     if callback.message:
-        miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=callback.bot.username, chat_id=game.chat_id)
+        bot_username = await _resolve_bot_username(callback.bot)
+        miniapp_url = _build_group_miniapp_url(settings=settings, bot_username=bot_username, chat_id=game.chat_id)
         await callback.message.answer(
             render_lobby_text(game.chat_id, game.players, game.selected_categories),
             reply_markup=lobby_keyboard(
@@ -496,3 +501,8 @@ def _build_group_miniapp_url(*, settings: Settings, bot_username: str | None, ch
         short_name=settings.miniapp_short_name,
         chat_id=chat_id,
     ) or build_miniapp_chat_url(settings.miniapp_public_url, chat_id)
+
+
+async def _resolve_bot_username(bot: Bot) -> str | None:
+    me = await bot.get_me()
+    return me.username
