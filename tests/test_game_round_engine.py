@@ -44,23 +44,16 @@ class PrepareGameRoundBehaviorTest(TestCase):
         self.assertNotEqual(prepared.spy_id, 1)
         self.assertEqual(sorted(choice_mock.call_args.args[0]), [2, 3])
 
-    def test_speaking_order_is_preserved_between_rounds(self) -> None:
+    def test_round_player_ids_are_rebuilt_from_current_players(self) -> None:
         game = self._build_game()
-        game.speaking_order = [2, 3, 1]
+        # Остатки прошлого раунда (например, игрок 4 вышел из лобби) не должны переноситься.
+        game.round_player_ids = [1, 4]
 
-        with patch("src.game.engine.random.shuffle") as shuffle_mock:
-            prepared = prepare_game_round(game, self._provider())
+        prepared = prepare_game_round(game, self._provider())
 
-        self.assertEqual(prepared.speaking_order, [2, 3, 1])
-        shuffle_mock.assert_not_called()
-
-    def test_invalid_speaking_order_is_rebuilt_once(self) -> None:
-        game = self._build_game()
-        game.speaking_order = [1, 2]
-
-        with patch("src.game.engine.random.shuffle") as shuffle_mock:
-            prepared = prepare_game_round(game, self._provider())
-
-        self.assertEqual(set(prepared.speaking_order), {1, 2, 3})
+        self.assertEqual(prepared.round_player_ids, [1, 2, 3])
         self.assertEqual(prepared.payload_type, PayloadType.PHOTO)
-        shuffle_mock.assert_called_once()
+        self.assertEqual(prepared.state, GameState.PLAYING)
+        self.assertIsNotNone(prepared.round_started_at_ts)
+        self.assertEqual(prepared.votes, {})
+        self.assertEqual(prepared.used_hint_indices, {})

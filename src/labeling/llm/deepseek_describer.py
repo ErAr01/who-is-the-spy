@@ -62,7 +62,14 @@ class DeepSeekDescriber(CharacterDescriber):
         self.model = model
         self.facts_count = facts_count
 
-    def describe(self, name: str, categories: list[str]) -> DescriptionResult:
+    def describe(
+        self,
+        name: str,
+        categories: list[str],
+        appearance_text: str | None = None,
+        wiki_url: str | None = None,
+        notes: str | None = None,
+    ) -> DescriptionResult:
         usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         profile: CharacterProfile | None = None
         facts: list[str] = []
@@ -70,7 +77,14 @@ class DeepSeekDescriber(CharacterDescriber):
         # Один основной запрос + один ретрай, если ответ невалиден или факты
         # отфильтрованы из-за утечки имени.
         for attempt in range(2):
-            completion = self._complete(name, categories, retry_note=retry_note)
+            completion = self._complete(
+                name,
+                categories,
+                appearance_text=appearance_text,
+                wiki_url=wiki_url,
+                notes=notes,
+                retry_note=retry_note,
+            )
             self._accumulate_usage(usage_total, completion)
             content = completion.choices[0].message.content or "{}"
             try:
@@ -126,9 +140,26 @@ class DeepSeekDescriber(CharacterDescriber):
             estimated_cost_usd=estimated_cost,
         )
 
-    def _complete(self, name: str, categories: list[str], retry_note: str | None = None):
+    def _complete(
+        self,
+        name: str,
+        categories: list[str],
+        appearance_text: str | None = None,
+        wiki_url: str | None = None,
+        notes: str | None = None,
+        retry_note: str | None = None,
+    ):
         run_id = f"describe-{int(time.time() * 1000)}"
-        user_text = f"Персонаж: {name}. Категория: {', '.join(categories) or 'не указана'}."
+        # Якоря с конкретной карточки (теги внешности сняты vision-моделью с самого
+        # изображения) — без них модель при неоднозначном имени описывает «тёзку».
+        lines = [f"Персонаж: {name}.", f"Категория: {', '.join(categories) or 'не указана'}."]
+        if appearance_text:
+            lines.append(f"Внешность на изображении карточки (теги с картинки): {appearance_text}.")
+        if wiki_url:
+            lines.append(f"Страница персонажа: {wiki_url}.")
+        if notes:
+            lines.append(f"Заметки к карточке: {notes}.")
+        user_text = "\n".join(lines)
         if retry_note:
             user_text += f"\n{retry_note}"
         return _call_with_rate_limit_retry(
@@ -155,7 +186,15 @@ class DeepSeekDescriber(CharacterDescriber):
     def _system_prompt(self) -> str:
         return (
             "Ты составляешь игровые материалы для игры «Кто шпион». "
-            "Тебе дают имя персонажа или актёра и категорию, из которой он взят. "
+            "Тебе дают имя персонажа или актёра, категорию, из которой он взят, и, если есть, "
+            "теги внешности, снятые с конкретного изображения карточки, ссылку на страницу "
+            "персонажа и заметки. "
+            "Имя может быть неоднозначным: тёзки и персонажи с похожими именами встречаются "
+            "в разных франшизах. Сначала определи, о каком именно персонаже речь, сверяясь "
+            "с категорией и тегами внешности (пол, возраст, тип персонажа, франшиза, причёска, "
+            "приметы). Если твоё первое предположение противоречит тегам внешности — это другой "
+            "персонаж, пересмотри выбор. Описание и факты должны относиться именно к персонажу "
+            "с карточки, а не к похожему по имени. "
             "Верни строго JSON с ключами description и facts без лишнего текста. "
             "description — краткое описание персонажа на русском языке (2-4 предложения): "
             "кто это, откуда, чем известен. "

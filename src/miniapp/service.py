@@ -45,8 +45,8 @@ class GameService:
         self._bot = bot
         self._analytics_emitter = analytics_emitter
         self._settings = settings or get_settings()
-        self._labeling_storage = LabelingStorage(self._settings.labeling_db_path)
-        self._labeling_storage.init_db()
+        # Лениво: не трогаем SQLite при создании сервиса, БД нужна только для описаний карточек.
+        self._labeling_storage: LabelingStorage | None = None
 
     async def get_snapshot(
         self,
@@ -545,10 +545,17 @@ class GameService:
     def _used_hint_indices(game: Game, user_id: int) -> list[int]:
         return game.used_hint_indices.get(user_id, [])
 
+    def _get_labeling_storage(self) -> LabelingStorage:
+        if self._labeling_storage is None:
+            storage = LabelingStorage(self._settings.labeling_db_path)
+            storage.init_db()
+            self._labeling_storage = storage
+        return self._labeling_storage
+
     def _card_description_and_facts(self, payload: str | None) -> tuple[str | None, list[str]]:
         if not payload:
             return None, []
-        card = self._labeling_storage.get_card(payload)
+        card = self._get_labeling_storage().get_card(payload)
         if card is None:
             return None, []
         facts = [fact for fact in (card.facts or []) if isinstance(fact, str) and fact.strip()]
@@ -587,7 +594,7 @@ class GameService:
     def _resolve_role_category(self, *, payload: str | None, selected_categories: list[str]) -> str | None:
         if not payload:
             return None
-        card = self._labeling_storage.get_card(payload)
+        card = self._get_labeling_storage().get_card(payload)
         if card is None:
             return None
         card_categories = [value.strip().lower() for value in card.dataset_categories if value.strip()]

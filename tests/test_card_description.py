@@ -99,9 +99,22 @@ class _FakeDescriber:
     def __init__(self, fail: bool = False) -> None:
         self.fail = fail
         self.calls = 0
+        self.last_appearance_text: str | None = None
+        self.last_wiki_url: str | None = None
+        self.last_notes: str | None = None
 
-    def describe(self, name: str, categories: list[str]) -> DescriptionResult:
+    def describe(
+        self,
+        name: str,
+        categories: list[str],
+        appearance_text: str | None = None,
+        wiki_url: str | None = None,
+        notes: str | None = None,
+    ) -> DescriptionResult:
         self.calls += 1
+        self.last_appearance_text = appearance_text
+        self.last_wiki_url = wiki_url
+        self.last_notes = notes
         if self.fail:
             raise RuntimeError("deepseek unavailable")
         return DescriptionResult(
@@ -269,6 +282,8 @@ class DescriptionPipelineTest(TestCase):
             self.assertEqual(result.card.description, "Описание Test Hero")
             self.assertEqual(len(result.card.facts), 10)
             self.assertEqual(result.card.description_model, "fake-deepseek")
+            # Якоря с картинки доходят до describer'а — без них модель путает тёзок.
+            self.assertEqual(describer.last_appearance_text, "fake appearance")
 
     def test_ingest_survives_describer_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -308,6 +323,8 @@ class DescriptionPipelineTest(TestCase):
             self.assertEqual(len(first.card.facts), 10)
             # Категории карточки передаются в describer.
             self.assertIn("anime", first.card.facts[0])
+            # Якоря с карточки тоже передаются — иначе модель путает тёзок.
+            self.assertEqual(describer.last_appearance_text, "card-1 appearance")
 
             second = pipeline.describe_card("card-1")
             self.assertTrue(second.skipped_existing)

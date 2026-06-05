@@ -42,6 +42,13 @@ class Embedder(Protocol):
 
 
 class CharacterDescriber(Protocol):
-    def describe(self, name: str, categories: list[str]) -> DescriptionResult:
+    def describe(
+        self,
+        name: str,
+        categories: list[str],
+        appearance_text: str | None = None,
+        wiki_url: str | None = None,
+        notes: str | None = None,
+    ) -> DescriptionResult:
         raise NotImplementedError
 

@@ -62,7 +62,15 @@ class LabelingPipeline:
         appearance_text = self._tagger.build_appearance_text(tagging.tags)
         embedding = self._embedder.embed_text(appearance_text)
         description_result = (
-            self._try_describe(name=name, categories=categories or []) if generate_description else None
+            self._try_describe(
+                name=name,
+                categories=categories or [],
+                appearance_text=appearance_text,
+                wiki_url=wiki_url,
+                notes=notes,
+            )
+            if generate_description
+            else None
         )
         card = self._storage.save_card(
             card_id=resolved_card_id,
@@ -85,13 +93,26 @@ class LabelingPipeline:
         )
         return IngestResult(card=card, skipped_duplicate=False)
 
-    def _try_describe(self, name: str, categories: list[str]) -> DescriptionResult | None:
+    def _try_describe(
+        self,
+        name: str,
+        categories: list[str],
+        appearance_text: str | None = None,
+        wiki_url: str | None = None,
+        notes: str | None = None,
+    ) -> DescriptionResult | None:
         # Ошибка генерации описания не должна срывать ingest:
         # карточку можно дополнить позже командой `describe`.
         if self._describer is None:
             return None
         try:
-            return self._describer.describe(name=name, categories=categories)
+            return self._describer.describe(
+                name=name,
+                categories=categories,
+                appearance_text=appearance_text,
+                wiki_url=wiki_url,
+                notes=notes,
+            )
         except Exception as exc:
             logger.warning(
                 "Description generation failed, card will be saved without it: name=%s error_type=%s",
@@ -171,6 +192,11 @@ class LabelingPipeline:
         result = self._describer.describe(
             name=card.name,
             categories=self._storage.get_dataset_categories(card.id),
+            # Якоря с карточки: теги внешности сняты с самого изображения и не дают
+            # модели перепутать персонажа с тёзкой при неоднозначном имени.
+            appearance_text=card.appearance_text,
+            wiki_url=card.wiki_url,
+            notes=card.notes,
         )
         updated = self._storage.update_card_description(
             card_id=card.id,
