@@ -2,12 +2,57 @@ import { useEffect, useState } from "react";
 
 import { mapError } from "../api/errorMap";
 import { miniAppClient } from "../api/miniappClient";
-import type { ApiError, MiniAppTestPairResponse } from "../api/types";
+import type { ApiError, MiniAppTestPairCard, MiniAppTestPairResponse } from "../api/types";
 import { categoryLabel } from "../utils/categoryLabels";
 
 interface Props {
   sessionToken: string;
   onSessionExpired: () => void;
+}
+
+function TestCardContent({ card }: { card: MiniAppTestPairCard }) {
+  const facts = card.facts ?? [];
+  return (
+    <>
+      {card.image_url ? (
+        <img className="card-image" src={card.image_url} alt={card.name} loading="lazy" />
+      ) : null}
+      <p>
+        <strong>{card.name}</strong> ({card.card_id})
+      </p>
+      {card.description ? (
+        <p className="role-description">{card.description}</p>
+      ) : (
+        <p className="muted">Описание ещё не сгенерировано.</p>
+      )}
+      {facts.length ? (
+        <details className="facts-details">
+          <summary>Факты ({facts.length})</summary>
+          <ol className="hint-list">
+            {facts.map((fact, index) => (
+              <li key={`${index}-${fact}`} className="hint-list-item">
+                {fact}
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : (
+        <p className="muted">Факты ещё не сгенерированы.</p>
+      )}
+      <div className="actions-col">
+        {card.wiki_url ? (
+          <a className="button button-secondary" href={card.wiki_url} target="_blank" rel="noreferrer">
+            Wikipedia
+          </a>
+        ) : null}
+        {card.search_url ? (
+          <a className="button button-secondary" href={card.search_url} target="_blank" rel="noreferrer">
+            Google
+          </a>
+        ) : null}
+      </div>
+    </>
+  );
 }
 
 export function PrivateTestPairPage({ sessionToken, onSessionExpired }: Props) {
@@ -104,44 +149,12 @@ export function PrivateTestPairPage({ sessionToken, onSessionExpired }: Props) {
 
           <section className="card">
             <h2>Мирный</h2>
-            {pair.civilian.image_url ? (
-              <img className="card-image" src={pair.civilian.image_url} alt={pair.civilian.name} loading="lazy" />
-            ) : null}
-            <p>
-              <strong>{pair.civilian.name}</strong> ({pair.civilian.card_id})
-            </p>
-            <div className="actions-col">
-              {pair.civilian.wiki_url ? (
-                <a className="button button-secondary" href={pair.civilian.wiki_url} target="_blank" rel="noreferrer">
-                  Wikipedia
-                </a>
-              ) : null}
-              {pair.civilian.search_url ? (
-                <a className="button button-secondary" href={pair.civilian.search_url} target="_blank" rel="noreferrer">
-                  Google
-                </a>
-              ) : null}
-            </div>
+            <TestCardContent card={pair.civilian} />
           </section>
 
           <section className="card">
             <h2>Шпион</h2>
-            {pair.spy.image_url ? <img className="card-image" src={pair.spy.image_url} alt={pair.spy.name} loading="lazy" /> : null}
-            <p>
-              <strong>{pair.spy.name}</strong> ({pair.spy.card_id})
-            </p>
-            <div className="actions-col">
-              {pair.spy.wiki_url ? (
-                <a className="button button-secondary" href={pair.spy.wiki_url} target="_blank" rel="noreferrer">
-                  Wikipedia
-                </a>
-              ) : null}
-              {pair.spy.search_url ? (
-                <a className="button button-secondary" href={pair.spy.search_url} target="_blank" rel="noreferrer">
-                  Google
-                </a>
-              ) : null}
-            </div>
+            <TestCardContent card={pair.spy} />
           </section>
         </>
       ) : null}

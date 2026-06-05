@@ -51,6 +51,9 @@ class Game:
     selected_categories: list[str] = field(default_factory=list)
     available_categories: list[str] = field(default_factory=list)
     votes: dict[int, int] = field(default_factory=dict)
+    # Индексы подсказок (фактов карточки), уже выданных игроку в текущем раунде.
+    # user_id -> список использованных индексов. Сбрасывается при подготовке раунда.
+    used_hint_indices: dict[int, list[int]] = field(default_factory=dict)
     last_voted_out_id: int | None = None
     last_is_spy_caught: bool | None = None
     last_round_duration_seconds: int | None = None
@@ -90,6 +93,10 @@ class Game:
             selected_categories=[str(v) for v in payload.get("selected_categories", [])],
             available_categories=[str(v) for v in payload.get("available_categories", [])],
             votes={int(k): int(v) for k, v in payload.get("votes", {}).items()},
+            used_hint_indices={
+                int(k): [int(i) for i in v]
+                for k, v in payload.get("used_hint_indices", {}).items()
+            },
             last_voted_out_id=(
                 int(payload["last_voted_out_id"])
                 if payload.get("last_voted_out_id") is not None

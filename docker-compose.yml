@@ -2,8 +2,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: who-is-the-spy-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis-data:/data
     restart: unless-stopped

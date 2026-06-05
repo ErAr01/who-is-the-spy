@@ -69,6 +69,17 @@ export interface MiniAppRoleResponse {
   search_url: string | null;
   category: string | null;
   category_label: string | null;
+  description: string | null;
+  hints_total: number;
+  hints_used: number;
+}
+
+export interface MiniAppHintResponse {
+  has_hint: boolean;
+  hint: string | null;
+  hints_total: number;
+  hints_used: number;
+  hints_remaining: number;
 }
 
 export interface MiniAppRoundRoleCard {
@@ -93,6 +104,8 @@ export interface MiniAppTestPairCard {
   image_url: string | null;
   wiki_url: string | null;
   search_url: string | null;
+  description: string | null;
+  facts: string[];
 }
 
 export interface MiniAppTestPairResponse {

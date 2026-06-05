@@ -1,13 +1,36 @@
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from unittest.mock import patch
-from unittest import IsolatedAsyncioTestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import Mock
 
 from src.game.models import Game, GameMode, GameState, Player
 from src.miniapp.errors import MiniAppError
 from src.miniapp.service import GameService
+
+
+class GameSerializationTest(TestCase):
+    def test_used_hint_indices_survive_json_roundtrip(self) -> None:
+        # Redis хранит игру как JSON: ключи dict становятся строками,
+        # from_dict обязан привести их обратно к int.
+        game = Game(
+            chat_id=-100,
+            admin_id=1,
+            state=GameState.PLAYING,
+            mode=GameMode.IMAGE_DB,
+            players=[Player(user_id=1, name="A"), Player(user_id=2, name="B")],
+            used_hint_indices={1: [0, 3], 2: [7]},
+        )
+
+        restored = Game.from_dict(json.loads(json.dumps(game.to_dict())))
+
+        self.assertEqual(restored.used_hint_indices, {1: [0, 3], 2: [7]})
+        for key in restored.used_hint_indices:
+            self.assertIsInstance(key, int)
+        for index in restored.used_hint_indices[1]:
+            self.assertIsInstance(index, int)
 
 
 class _InMemoryRepo:
@@ -114,3 +137,184 @@ class GameServiceValidationTest(IsolatedAsyncioTestCase):
         self.assertEqual(game.players, [])
         self.assertEqual(game.round_player_ids, [])
         self.assertEqual(game.state, GameState.LOBBY)
+
+
+class _FakeCard:
+    def __init__(self, *, description: str | None, facts: list[str]) -> None:
+        self.description = description
+        self.facts = facts
+        self.dataset_categories: list[str] = []
+
+
+class _FakeLabelingStorage:
+    """Минимальный двойник LabelingStorage: card_id -> _FakeCard."""
+
+    def __init__(self, cards: dict[str, _FakeCard]) -> None:
+        self._cards = cards
+
+    def get_card(self, card_id: str):
+        return self._cards.get(card_id)
+
+
+class GameServiceHintTest(IsolatedAsyncioTestCase):
+    CIVILIAN_FACTS = [f"civilian-fact-{i}" for i in range(5)]
+    SPY_FACTS = [f"spy-fact-{i}" for i in range(3)]
+
+    def _build_playing_game(self, *, spy_id: int = 3) -> Game:
+        return Game(
+            chat_id=100,
+            admin_id=1,
+            state=GameState.PLAYING,
+            mode=GameMode.IMAGE_DB,
+            players=[Player(user_id=1, name="Admin"), Player(user_id=2, name="P2"), Player(user_id=3, name="P3")],
+            round_player_ids=[1, 2, 3],
+            spy_id=spy_id,
+            civilian_payload="civ-card",
+            spy_payload="spy-card",
+            civilian_name="Civ",
+            spy_name="Spy",
+            available_categories=["anime"],
+            selected_categories=[],
+            version=5,
+            updated_at_ts=5.0,
+        )
+
+    def _build_service(self, repo: _InMemoryRepo, cards: dict[str, _FakeCard]) -> GameService:
+        service = GameService(repo=repo, bot=Mock(), analytics_emitter=Mock())
+        service._labeling_storage = _FakeLabelingStorage(cards)
+        return service
+
+    def _cards(self) -> dict[str, _FakeCard]:
+        return {
+            "civ-card": _FakeCard(description="A civilian character", facts=list(self.CIVILIAN_FACTS)),
+            "spy-card": _FakeCard(description="A spy character", facts=list(self.SPY_FACTS)),
+        }
+
+    async def test_role_response_includes_description_and_hint_counts(self) -> None:
+        game = self._build_playing_game()
+        repo = _InMemoryRepo(game)
+        service = self._build_service(repo, self._cards())
+
+        role = await service.get_my_role(chat_id=100, user_id=1)  # civilian
+
+        self.assertEqual(role["description"], "A civilian character")
+        self.assertEqual(role["hints_total"], len(self.CIVILIAN_FACTS))
+        self.assertEqual(role["hints_used"], 0)
+
+    async def test_hint_returns_a_fact(self) -> None:
+        game = self._build_playing_game()
+        repo = _InMemoryRepo(game)
+        service = self._build_service(repo, self._cards())
+
+        result = await service.get_hint(chat_id=100, user_id=2)  # civilian
+
+        self.assertTrue(result["has_hint"])
+        self.assertIn(result["hint"], self.CIVILIAN_FACTS)
+        self.assertEqual(result["hints_used"], 1)
+        self.assertEqual(result["hints_remaining"], len(self.CIVILIAN_FACTS) - 1)
+
+    async def test_repeated_hints_never_repeat_within_round(self) -> None:
+        game = self._build_playing_game()
+        repo = _InMemoryRepo(game)
+        service = self._build_service(repo, self._cards())
+
+        seen: list[str] = []
+        for _ in range(len(self.CIVILIAN_FACTS)):
+            result = await service.get_hint(chat_id=100, user_id=2)
+            self.assertTrue(result["has_hint"])
+            seen.append(result["hint"])
+
+        self.assertEqual(sorted(seen), sorted(self.CIVILIAN_FACTS))
+        self.assertEqual(len(set(seen)), len(self.CIVILIAN_FACTS))
+
+    async def test_hint_exhaustion_returns_no_more_hints(self) -> None:
+        game = self._build_playing_game()
+        repo = _InMemoryRepo(game)
+        service = self._build_service(repo, self._cards())
+
+        for _ in range(len(self.CIVILIAN_FACTS)):
+            await service.get_hint(chat_id=100, user_id=2)
+
+        result = await service.get_hint(chat_id=100, user_id=2)
+        self.assertFalse(result["has_hint"])
+        self.assertIsNone(result["hint"])
+        self.assertEqual(result["hints_remaining"], 0)
+        self.assertEqual(result["hints_used"], len(self.CIVILIAN_FACTS))
+
+    async def test_hint_does_not_bump_version(self) -> None:
+        game = self._build_playing_game()
+        repo = _InMemoryRepo(game)
+        service = self._build_service(repo, self._cards())
+        version_before = game.version
+
+        await service.get_hint(chat_id=100, user_id=2)
+
+        self.assertEqual(game.version, version_before)
+
+    async def test_hints_reset_on_new_round(self) -> None:
+        from src.game.engine import prepare_game_round
+
+        game = self._build_playing_game()
+        repo = _InMemoryRepo(game)
+        service = self._build_service(repo, self._cards())
+
+        await service.get_hint(chat_id=100, user_id=2)
+        self.assertEqual(len(game.used_hint_indices.get(2, [])), 1)
+
+        content = Mock()
+        content.get_random_image_pair.return_value = Mock(
+            theme="t",
+            civilian="civ-card",
+            spy="spy-card",
+            civilian_name="Civ",
+            spy_name="Spy",
+            civilian_wiki_url=None,
+            spy_wiki_url=None,
+        )
+        prepare_game_round(game, content)
+
+        self.assertEqual(game.used_hint_indices, {})
+
+    async def test_card_without_facts_returns_no_hints(self) -> None:
+        game = self._build_playing_game()
+        repo = _InMemoryRepo(game)
+        cards = {
+            "civ-card": _FakeCard(description=None, facts=[]),
+            "spy-card": _FakeCard(description=None, facts=[]),
+        }
+        service = self._build_service(repo, cards)
+
+        result = await service.get_hint(chat_id=100, user_id=2)
+        self.assertFalse(result["has_hint"])
+        self.assertEqual(result["hints_total"], 0)
+
+    async def test_spy_and_civilian_get_facts_of_their_own_card(self) -> None:
+        game = self._build_playing_game(spy_id=3)
+        repo = _InMemoryRepo(game)
+        service = self._build_service(repo, self._cards())
+
+        civ_result = await service.get_hint(chat_id=100, user_id=1)  # civilian
+        spy_result = await service.get_hint(chat_id=100, user_id=3)  # spy
+
+        self.assertIn(civ_result["hint"], self.CIVILIAN_FACTS)
+        self.assertIn(spy_result["hint"], self.SPY_FACTS)
+
+    async def test_hint_requires_round_participant(self) -> None:
+        game = self._build_playing_game()
+        game.round_player_ids = [1, 2]  # user 3 not in round
+        repo = _InMemoryRepo(game)
+        service = self._build_service(repo, self._cards())
+
+        with self.assertRaises(MiniAppError) as exc:
+            await service.get_hint(chat_id=100, user_id=3)
+        self.assertEqual(exc.exception.code, "member_required")
+
+    async def test_hint_forbidden_outside_round(self) -> None:
+        game = self._build_playing_game()
+        game.state = GameState.LOBBY
+        repo = _InMemoryRepo(game)
+        service = self._build_service(repo, self._cards())
+
+        with self.assertRaises(MiniAppError) as exc:
+            await service.get_hint(chat_id=100, user_id=2)
+        self.assertEqual(exc.exception.code, "hint_forbidden_state")

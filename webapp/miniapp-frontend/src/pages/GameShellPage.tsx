@@ -8,6 +8,7 @@ import { TopStatusBar } from "../components/TopStatusBar";
 import { useGameActions } from "../hooks/useGameActions";
 import { useGamePolling } from "../hooks/useGamePolling";
 import { useHaptics } from "../hooks/useHaptics";
+import { useHints } from "../hooks/useHints";
 import { useRole } from "../hooks/useRole";
 import { useRoundRoles } from "../hooks/useRoundRoles";
 import { useMicrointeraction } from "../hooks/useMicrointeraction";
@@ -66,6 +67,7 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
   const polling = useGamePolling(sessionToken, chatId);
   const actions = useGameActions(sessionToken, chatId, polling.refreshNow);
   const role = useRole(sessionToken, chatId, polling.snapshot?.state);
+  const hints = useHints(sessionToken, chatId, polling.snapshot?.state);
   const roundRoles = useRoundRoles(sessionToken, chatId, polling.snapshot?.state);
 
   const shellScreen = useMemo(() => screenFromSnapshot(polling.snapshot), [polling.snapshot]);
@@ -124,6 +126,18 @@ export function GameShellPage({ chatId, sessionToken, currentUserId, onSessionEx
           role={role.role}
           roleLoading={role.loading}
           pendingAction={actions.pendingAction}
+          hints={{
+            revealed: hints.revealed,
+            loading: hints.loading,
+            error: hints.error,
+            remaining: hints.remaining,
+            total: hints.total,
+            used: hints.used,
+            onRevealHint: () => {
+              impact("light");
+              void hints.revealHint();
+            }
+          }}
           onRevealRole={() => {
             impact("soft");
             void role.revealRole();

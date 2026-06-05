@@ -18,6 +18,8 @@ from src.miniapp.dto import (
     MiniAppAuthResponse,
     MiniAppErrorBody,
     MiniAppErrorResponse,
+    MiniAppHintRequest,
+    MiniAppHintResponse,
     MiniAppRoleResponse,
     MiniAppRoundRoleCardDTO,
     MiniAppRoundRolesResponse,
@@ -371,6 +373,26 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
         )
         return MiniAppRoleResponse(**payload)
 
+    @router.post("/me/hint", response_model=MiniAppHintResponse)
+    async def me_hint(
+        request: Request,
+        payload: MiniAppHintRequest,
+        claims: MiniAppSessionClaims = Depends(_auth_dependency),
+    ) -> MiniAppHintResponse:
+        _ensure_chat_access(chat_id=payload.chat_id, claims=claims)
+        context = _get_context(request)
+        result = await _run_action(
+            context=context,
+            action_name="me/hint",
+            chat_id=payload.chat_id,
+            user_id=claims.user_id,
+            executor=lambda: context.game_service.get_hint(
+                chat_id=payload.chat_id,
+                user_id=claims.user_id,
+            ),
+        )
+        return MiniAppHintResponse(**result)
+
     @router.get("/round/roles", response_model=MiniAppRoundRolesResponse)
     async def round_roles(
         request: Request,
@@ -425,6 +447,8 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
                 image_url=payload["civilian_image_url"],
                 wiki_url=payload["civilian_wiki_url"],
                 search_url=payload["civilian_search_url"],
+                description=payload["civilian_description"],
+                facts=payload["civilian_facts"],
             ),
             spy=MiniAppTestPairCardDTO(
                 card_id=payload["spy_id"],
@@ -432,6 +456,8 @@ def build_miniapp_api(settings: Settings, app_context: AppContext, analytics_emi
                 image_url=payload["spy_image_url"],
                 wiki_url=payload["spy_wiki_url"],
                 search_url=payload["spy_search_url"],
+                description=payload["spy_description"],
+                facts=payload["spy_facts"],
             ),
         )
 

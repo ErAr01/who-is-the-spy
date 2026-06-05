@@ -12,6 +12,7 @@ from src.labeling.image_embedding_provider import (
     OpenAIImageEmbeddingProvider,
 )
 from src.labeling.image_embedding_storage import ImageEmbeddingStorage
+from src.labeling.llm.deepseek_describer import DeepSeekDescriber
 from src.labeling.llm.openai_tagger import OpenAITagger
 from src.labeling.pipeline import LabelingPipeline
 from src.labeling.similarity import PairSelector
@@ -27,6 +28,20 @@ def _storage() -> LabelingStorage:
     return storage
 
 
+def _describer(required: bool = True) -> DeepSeekDescriber | None:
+    settings = get_settings()
+    if settings.deepseek_api_key is None:
+        if required:
+            raise typer.BadParameter("DEEPSEEK_API_KEY is required for description commands")
+        return None
+    return DeepSeekDescriber(
+        api_key=settings.deepseek_api_key.get_secret_value(),
+        base_url=settings.deepseek_base_url,
+        model=settings.deepseek_model,
+        facts_count=settings.description_facts_count,
+    )
+
+
 def _pipeline(vision_model: str | None = None, embedding_model: str | None = None) -> LabelingPipeline:
     settings = get_settings()
     if settings.openai_api_key is None:
@@ -36,7 +51,13 @@ def _pipeline(vision_model: str | None = None, embedding_model: str | None = Non
         vision_model=vision_model or settings.openai_vision_model,
         embedding_model=embedding_model or settings.openai_embedding_model,
     )
-    return LabelingPipeline(_storage(), tagger, tagger)
+    return LabelingPipeline(_storage(), tagger, tagger, describer=_describer(required=False))
+
+
+def _describe_pipeline() -> LabelingPipeline:
+    # Бэкфилл описаний не трогает изображения и embeddings, поэтому
+    # OPENAI_API_KEY здесь не нужен — достаточно DeepSeek.
+    return LabelingPipeline(_storage(), tagger=None, embedder=None, describer=_describer(required=True))
 
 
 def _image_embedding_storage() -> ImageEmbeddingStorage:
@@ -333,6 +354,54 @@ def relabel(
         raise typer.BadParameter("Provide --id or --all")
     card = pipeline.relabel_card(card_id)
     typer.echo(f"Relabeled card: {card.id}")
+
+
+@app.command("describe")
+def describe(
+    card_id: str | None = typer.Option(None, "--id"),
+    all_cards: bool = typer.Option(False, "--all"),
+    force: bool = typer.Option(False),
+) -> None:
+    pipeline = _describe_pipeline()
+    if not all_cards and not card_id:
+        raise typer.BadParameter("Provide --id or --all")
+    if card_id:
+        result = pipeline.describe_card(card_id, force=force)
+        if result.skipped_existing:
+            typer.echo(f"Skipped (description already exists): {result.card.id}")
+            return
+        typer.echo(
+            f"Described card: {result.card.id} | facts={len(result.card.facts)} "
+            f"| estimated_cost=${result.estimated_cost_usd:.6f}"
+        )
+        return
+
+    target_ids = pipeline.list_describe_targets(force=force)
+    if not target_ids:
+        typer.echo("All cards already have descriptions")
+        return
+    processed = 0
+    skipped = 0
+    failed = 0
+    total_cost = 0.0
+    for target_id in target_ids:
+        try:
+            result = pipeline.describe_card(target_id, force=force)
+        except Exception as exc:
+            failed += 1
+            typer.echo(f"{target_id} -> ERROR ({type(exc).__name__}): {exc}")
+            continue
+        if result.skipped_existing:
+            skipped += 1
+            typer.echo(f"{target_id} -> skipped (already described)")
+            continue
+        processed += 1
+        total_cost += result.estimated_cost_usd
+        typer.echo(f"{target_id} -> described, facts={len(result.card.facts)}")
+    typer.echo(
+        f"Done. Attempted={len(target_ids)}, processed={processed}, skipped={skipped}, "
+        f"failed={failed}, estimated_cost=${total_cost:.6f}"
+    )
 
 
 @app.command("re-embed")

@@ -2,6 +2,7 @@ import type {
   ApiError,
   MiniAppActionResponse,
   MiniAppAuthResponse,
+  MiniAppHintResponse,
   MiniAppRoleResponse,
   MiniAppRoundRolesResponse,
   MiniAppSnapshotResponse,
@@ -32,6 +33,14 @@ export class MiniAppApiClient {
   async getRole(sessionToken: string, chatId: number): Promise<MiniAppRoleResponse> {
     const params = new URLSearchParams({ chat_id: String(chatId) });
     return this.request<MiniAppRoleResponse>(`/me/role?${params.toString()}`, { method: "GET", sessionToken });
+  }
+
+  async getHint(sessionToken: string, chatId: number): Promise<MiniAppHintResponse> {
+    return this.request<MiniAppHintResponse>("/me/hint", {
+      method: "POST",
+      sessionToken,
+      body: JSON.stringify({ chat_id: chatId })
+    });
   }
 
   async getRoundRoles(sessionToken: string, chatId: number): Promise<MiniAppRoundRolesResponse> {

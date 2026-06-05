@@ -61,10 +61,15 @@ class LabelingStorage:
                     embedding_model    TEXT NOT NULL,
                     vision_model       TEXT NOT NULL,
                     labeled_at         TEXT NOT NULL,
-                    notes              TEXT
+                    notes              TEXT,
+                    description        TEXT,
+                    facts_json         TEXT,
+                    description_model  TEXT,
+                    described_at       TEXT
                 )
                 """
             )
+            self._ensure_card_description_columns(conn)
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS card_tags (
@@ -135,17 +140,23 @@ class LabelingStorage:
         vision_model: str,
         dataset_categories: list[str] | None = None,
         notes: str | None = None,
+        description: str | None = None,
+        facts: list[str] | None = None,
+        description_model: str | None = None,
     ) -> CardRecord:
         labeled_at = datetime.now(UTC).isoformat()
         tags_json = tags.model_dump_json()
         embedding_blob = self._embedding_to_blob(embedding)
+        facts_json = json.dumps(facts, ensure_ascii=False) if facts is not None else None
+        described_at = labeled_at if description is not None else None
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO cards (
                     id, name, wiki_url, image_bytes, image_mime, thumbnail_bytes, image_sha256,
-                    tags_json, appearance_text, embedding, embedding_model, vision_model, labeled_at, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    tags_json, appearance_text, embedding, embedding_model, vision_model, labeled_at, notes,
+                    description, facts_json, description_model, described_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name=excluded.name,
                     wiki_url=excluded.wiki_url,
@@ -159,7 +170,11 @@ class LabelingStorage:
                     embedding_model=excluded.embedding_model,
                     vision_model=excluded.vision_model,
                     labeled_at=excluded.labeled_at,
-                    notes=excluded.notes
+                    notes=excluded.notes,
+                    description=COALESCE(excluded.description, cards.description),
+                    facts_json=COALESCE(excluded.facts_json, cards.facts_json),
+                    description_model=COALESCE(excluded.description_model, cards.description_model),
+                    described_at=COALESCE(excluded.described_at, cards.described_at)
                 """,
                 (
                     card_id,
@@ -176,6 +191,10 @@ class LabelingStorage:
                     vision_model,
                     labeled_at,
                     notes,
+                    description,
+                    facts_json,
+                    description_model,
+                    described_at,
                 ),
             )
             conn.execute("DELETE FROM card_tags WHERE card_id = ?", (card_id,))
@@ -193,6 +212,42 @@ class LabelingStorage:
         if row is None:
             return None
         return self._row_to_card(row)
+
+    def update_card_description(
+        self,
+        card_id: str,
+        description: str,
+        facts: list[str],
+        description_model: str,
+    ) -> CardRecord:
+        described_at = datetime.now(UTC).isoformat()
+        facts_json = json.dumps(facts, ensure_ascii=False)
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE cards
+                SET description = ?, facts_json = ?, description_model = ?, described_at = ?
+                WHERE id = ?
+                """,
+                (description, facts_json, description_model, described_at, card_id),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Card '{card_id}' not found")
+            conn.commit()
+            row = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+        return self._row_to_card(row)
+
+    def list_card_ids_missing_description(self) -> list[str]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id
+                FROM cards
+                WHERE description IS NULL OR description = ''
+                ORDER BY labeled_at DESC
+                """
+            ).fetchall()
+        return [str(row["id"]) for row in rows]
 
     def list_cards(self) -> list[CardRecord]:
         with self._connect() as conn:
@@ -432,6 +487,19 @@ class LabelingStorage:
         conn.execute("ALTER TABLE pair_history ADD COLUMN chat_id INTEGER")
 
     @staticmethod
+    def _ensure_card_description_columns(conn: sqlite3.Connection) -> None:
+        columns = conn.execute("PRAGMA table_info(cards)").fetchall()
+        existing = {str(row["name"]) for row in columns}
+        for column, ddl_type in (
+            ("description", "TEXT"),
+            ("facts_json", "TEXT"),
+            ("description_model", "TEXT"),
+            ("described_at", "TEXT"),
+        ):
+            if column not in existing:
+                conn.execute(f"ALTER TABLE cards ADD COLUMN {column} {ddl_type}")
+
+    @staticmethod
     def _embedding_to_blob(embedding: np.ndarray) -> bytes:
         return np.asarray(embedding, dtype=np.float32).tobytes()
 
@@ -477,6 +545,13 @@ class LabelingStorage:
 
     def _row_to_card(self, row: sqlite3.Row) -> CardRecord:
         tags = CardTags.model_validate_json(row["tags_json"])
+        # Описание/факты могут отсутствовать в ещё не мигрированной БД
+        # (рантайм бота открывает БД без init_db).
+        columns = set(row.keys())
+        description = row["description"] if "description" in columns else None
+        facts_json = row["facts_json"] if "facts_json" in columns else None
+        description_model = row["description_model"] if "description_model" in columns else None
+        described_at_raw = row["described_at"] if "described_at" in columns else None
         return CardRecord(
             id=row["id"],
             name=row["name"],
@@ -489,5 +564,9 @@ class LabelingStorage:
             labeled_at=datetime.fromisoformat(row["labeled_at"]),
             dataset_categories=self.get_dataset_categories(row["id"]),
             notes=row["notes"],
+            description=description,
+            facts=json.loads(facts_json) if facts_json else [],
+            description_model=description_model,
+            described_at=datetime.fromisoformat(described_at_raw) if described_at_raw else None,
         )
 

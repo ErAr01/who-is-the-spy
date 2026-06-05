@@ -60,6 +60,10 @@ class CardRecord(BaseModel):
     labeled_at: datetime
     dataset_categories: list[str] = Field(default_factory=list)
     notes: str | None = None
+    description: str | None = None
+    facts: list[str] = Field(default_factory=list)
+    description_model: str | None = None
+    described_at: datetime | None = None
 
 
 class PairResult(BaseModel):

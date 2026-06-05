@@ -26,6 +26,7 @@ class AnalyticsEventName(StrEnum):
     MINIAPP_AUTH_FAIL = "miniapp-auth-fail"
     MINIAPP_ACTION_FAILED = "miniapp-action-failed"
     MINIAPP_POLLING_LATENCY = "miniapp-polling-latency"
+    MINIAPP_HINT_USED = "miniapp-hint-used"
 
 
 @dataclass(slots=True, frozen=True)

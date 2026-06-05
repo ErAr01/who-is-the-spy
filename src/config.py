@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
     openai_vision_model: str = Field(default="gpt-4o-mini", alias="OPENAI_VISION_MODEL")
     openai_embedding_model: str = Field(default="text-embedding-3-small", alias="OPENAI_EMBEDDING_MODEL")
+    deepseek_api_key: SecretStr | None = Field(default=None, alias="DEEPSEEK_API_KEY")
+    deepseek_base_url: str = Field(default="https://api.deepseek.com", alias="DEEPSEEK_BASE_URL")
+    deepseek_model: str = Field(default="deepseek-chat", alias="DEEPSEEK_MODEL")
+    description_facts_count: int = Field(default=10, alias="DESCRIPTION_FACTS_COUNT")
     labeling_db_path: Path = Field(default=Path("data/images/cards.db"), alias="LABELING_DB_PATH")
     image_embedding_db_path: Path = Field(
         default=Path("data/images/image_embeddings.db"),
@@ -95,6 +99,26 @@ class Settings(BaseSettings):
         except (TypeError, ValueError):
             return 8
         return parsed if parsed > 0 else 8
+
+    @field_validator("deepseek_api_key", mode="before")
+    @classmethod
+    def _validate_deepseek_api_key(cls, value: object) -> object:
+        # Пустой DEEPSEEK_API_KEY= в .env должен означать "ключ не задан",
+        # иначе CLI попытается ходить в API с пустым ключом.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("description_facts_count", mode="before")
+    @classmethod
+    def _validate_description_facts_count(cls, value: object) -> int:
+        if isinstance(value, bool):
+            return 10
+        try:
+            parsed = int(str(value).strip()) if isinstance(value, str) else int(value)
+        except (TypeError, ValueError):
+            return 10
+        return parsed if parsed > 0 else 10
 
 
 @lru_cache

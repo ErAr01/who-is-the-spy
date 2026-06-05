@@ -1,4 +1,4 @@
-import type { MiniAppRoleResponse, MiniAppSnapshot } from "../api/types";
+import type { ApiError, MiniAppRoleResponse, MiniAppSnapshot } from "../api/types";
 import { AdminActions } from "../components/AdminActions";
 import { RoleCard } from "../components/RoleCard";
 
@@ -7,6 +7,15 @@ interface Props {
   role: MiniAppRoleResponse | null;
   roleLoading: boolean;
   pendingAction: string | null;
+  hints: {
+    revealed: string[];
+    loading: boolean;
+    error: ApiError | null;
+    remaining: number | null;
+    total: number;
+    used: number;
+    onRevealHint: () => void;
+  };
   onRevealRole: () => void;
   onOpenVoting: () => void;
   onCancel: () => void;
@@ -17,6 +26,7 @@ export function PlayingScreen({
   role,
   roleLoading,
   pendingAction,
+  hints,
   onRevealRole,
   onOpenVoting,
   onCancel
@@ -34,6 +44,7 @@ export function PlayingScreen({
         loading={roleLoading}
         onReveal={onRevealRole}
         hiddenReason="Роль доступна только после старта раунда."
+        hints={hints}
       />
       <AdminActions
         title="Управление раундом"

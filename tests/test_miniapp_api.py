@@ -207,6 +207,62 @@ class MiniAppApiIntegrationTest(TestCase):
         self.assertEqual(no_member_role.status_code, 403)
         self.assertEqual(no_member_role.json()["error"]["code"], "member_required")
 
+    def test_hint_endpoint_returns_unique_facts_then_exhausts(self) -> None:
+        game = Game(
+            chat_id=650,
+            admin_id=1,
+            state=GameState.PLAYING,
+            mode=GameMode.IMAGE_DB,
+            players=[Player(user_id=1, name="Admin"), Player(user_id=2, name="User2")],
+            round_player_ids=[1, 2],
+            spy_id=2,
+            payload_type=PayloadType.PHOTO,
+            civilian_payload="civilian-card",
+            spy_payload="spy-card",
+            civilian_name="Civilian",
+            spy_name="Spy",
+            version=10,
+            updated_at_ts=10.0,
+        )
+        client, repo = self._build_client(game)
+        repo._started_users.update({1, 2})
+
+        spy_facts = ["spy-fact-0", "spy-fact-1"]
+
+        class _FakeStorage:
+            def get_card(self, card_id: str):
+                if card_id == "spy-card":
+                    return SimpleNamespace(description="Spy desc", facts=list(spy_facts), dataset_categories=[])
+                return SimpleNamespace(description="Civ desc", facts=["civ-0", "civ-1", "civ-2"], dataset_categories=[])
+
+        client.app.state.miniapp.game_service._labeling_storage = _FakeStorage()
+
+        headers = self._auth_headers(client, user_id=2, chat_id=650, name="User2")  # spy
+
+        role = client.get("/api/v1/miniapp/me/role", params={"chat_id": 650}, headers=headers)
+        self.assertEqual(role.status_code, 200)
+        self.assertEqual(role.json()["description"], "Spy desc")
+        self.assertEqual(role.json()["hints_total"], 2)
+        self.assertEqual(role.json()["hints_used"], 0)
+
+        seen: list[str] = []
+        for _ in range(2):
+            resp = client.post("/api/v1/miniapp/me/hint", json={"chat_id": 650}, headers=headers)
+            self.assertEqual(resp.status_code, 200)
+            body = resp.json()
+            self.assertTrue(body["has_hint"])
+            self.assertIn(body["hint"], spy_facts)
+            seen.append(body["hint"])
+
+        self.assertEqual(sorted(seen), sorted(spy_facts))
+
+        exhausted = client.post("/api/v1/miniapp/me/hint", json={"chat_id": 650}, headers=headers)
+        self.assertEqual(exhausted.status_code, 200)
+        self.assertFalse(exhausted.json()["has_hint"])
+        self.assertEqual(exhausted.json()["hints_remaining"], 0)
+        # Приватная подсказка не должна бампать версию игры.
+        self.assertEqual(repo.game.version, 10)
+
     def test_join_and_admin_permission_checks(self) -> None:
         game = Game(
             chat_id=700,
@@ -300,6 +356,7 @@ class MiniAppApiIntegrationTest(TestCase):
         headers = self._auth_headers(client, user_id=1, chat_id=1, name="Admin")
 
         fake_provider = Mock()
+        fake_provider.get_available_categories.return_value = ["anime"]
         fake_provider.get_random_image_pair.return_value = Mock(
             theme="Все категории",
             civilian="civilian-1",
@@ -310,6 +367,18 @@ class MiniAppApiIntegrationTest(TestCase):
             spy_wiki_url="https://w.spy",
         )
 
+        class _FakeStorage:
+            def get_card(self, card_id: str):
+                if card_id == "civilian-1":
+                    return SimpleNamespace(
+                        description="Civ desc",
+                        facts=["civ-fact-0", "civ-fact-1"],
+                        dataset_categories=[],
+                    )
+                return SimpleNamespace(description=None, facts=[], dataset_categories=[])
+
+        client.app.state.miniapp.game_service._labeling_storage = _FakeStorage()
+
         with patch("src.miniapp.service.build_content_provider", return_value=fake_provider):
             response = client.get("/api/v1/miniapp/testpair", headers=headers)
 
@@ -317,3 +386,8 @@ class MiniAppApiIntegrationTest(TestCase):
         payload = response.json()
         self.assertEqual(payload["civilian"]["card_id"], "civilian-1")
         self.assertEqual(payload["spy"]["card_id"], "spy-1")
+        self.assertEqual(payload["civilian"]["description"], "Civ desc")
+        self.assertEqual(payload["civilian"]["facts"], ["civ-fact-0", "civ-fact-1"])
+        # Backfill ещё не выполнен для шпиона — фронт должен корректно обработать пустые поля.
+        self.assertIsNone(payload["spy"]["description"])
+        self.assertEqual(payload["spy"]["facts"], [])

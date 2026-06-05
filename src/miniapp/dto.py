@@ -97,6 +97,22 @@ class MiniAppRoleResponse(BaseModel):
     search_url: str | None = None
     category: str | None = None
     category_label: str | None = None
+    description: str | None = None
+    hints_total: int = 0
+    hints_used: int = 0
+
+
+class MiniAppHintRequest(MiniAppBaseActionRequest):
+    pass
+
+
+class MiniAppHintResponse(BaseModel):
+    # has_hint=False означает, что подсказок больше нет (фактов нет или все выданы).
+    has_hint: bool
+    hint: str | None = None
+    hints_total: int = 0
+    hints_used: int = 0
+    hints_remaining: int = 0
 
 
 class MiniAppTestPairCardDTO(BaseModel):
@@ -105,6 +121,8 @@ class MiniAppTestPairCardDTO(BaseModel):
     image_url: str | None = None
     wiki_url: str | None = None
     search_url: str | None = None
+    description: str | None = None
+    facts: list[str] = Field(default_factory=list)
 
 
 class MiniAppTestPairResponse(BaseModel):

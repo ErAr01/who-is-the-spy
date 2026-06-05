@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from time import monotonic
 
@@ -446,6 +447,9 @@ class GameService:
                 "search_url": None,
                 "category": None,
                 "category_label": None,
+                "description": None,
+                "hints_total": 0,
+                "hints_used": 0,
             }
         is_spy = user_id == game.spy_id
         payload = game.spy_payload if is_spy else game.civilian_payload
@@ -454,6 +458,8 @@ class GameService:
         category = self._resolve_role_category(payload=payload, selected_categories=game.selected_categories)
         search_url = self._build_role_search_url(role_name=role_name, category=category)
         image_url = f"/api/v1/miniapp/cards/{payload}/image" if payload else None
+        description, facts = self._card_description_and_facts(payload)
+        hints_used = len(self._used_hint_indices(game, user_id))
         return {
             "has_role": payload is not None,
             "is_spy": is_spy,
@@ -465,7 +471,88 @@ class GameService:
             "search_url": search_url,
             "category": category,
             "category_label": category_label(category) if category else None,
+            "description": description,
+            "hints_total": len(facts),
+            "hints_used": hints_used,
         }
+
+    async def get_hint(self, *, chat_id: int, user_id: int) -> dict[str, object]:
+        """Выдать игроку ОДИН случайный ещё не использованный факт его собственной карточки.
+
+        Состояние использованных фактов хранится per-player в Game.used_hint_indices
+        и переживает перезапуски (Redis). Сбрасывается при подготовке нового раунда.
+        Использование подсказки приватно для игрока, поэтому версия игры НЕ бампается
+        (save_game с bump_version=False) — это не должно триггерить обновление у всех клиентов.
+        """
+        async with self._repo.chat_lock(chat_id):
+            game = await self._require_game(chat_id)
+            if user_id not in self._round_player_ids(game):
+                raise MiniAppError(
+                    code="member_required",
+                    message="Ты не участник этого раунда.",
+                    status_code=403,
+                )
+            if game.state not in {GameState.PLAYING, GameState.VOTING}:
+                raise MiniAppError(
+                    code="hint_forbidden_state",
+                    message="Подсказки доступны только во время раунда.",
+                    status_code=409,
+                )
+            is_spy = user_id == game.spy_id
+            payload = game.spy_payload if is_spy else game.civilian_payload
+            _, facts = self._card_description_and_facts(payload)
+
+            used = self._used_hint_indices(game, user_id)
+            available = [index for index in range(len(facts)) if index not in used]
+            if not available:
+                # Подсказок больше нет (фактов нет или все выданы) — это не ошибка.
+                return {
+                    "has_hint": False,
+                    "hint": None,
+                    "hints_total": len(facts),
+                    "hints_used": len(used),
+                    "hints_remaining": 0,
+                }
+
+            chosen_index = random.choice(available)
+            game.used_hint_indices.setdefault(user_id, []).append(chosen_index)
+            # Приватная мутация: не бампаем версию, чтобы не дёргать long-poll у всех клиентов.
+            await self._repo.save_game(game, bump_version=False)
+
+            new_used_count = len(self._used_hint_indices(game, user_id))
+            self._analytics_emitter.emit(
+                AnalyticsEvent(
+                    event_name=AnalyticsEventName.MINIAPP_HINT_USED,
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    game_id=str(chat_id),
+                    payload={
+                        "is_spy": is_spy,
+                        "hints_used": new_used_count,
+                        "hints_total": len(facts),
+                    },
+                )
+            )
+            return {
+                "has_hint": True,
+                "hint": facts[chosen_index],
+                "hints_total": len(facts),
+                "hints_used": new_used_count,
+                "hints_remaining": len(facts) - new_used_count,
+            }
+
+    @staticmethod
+    def _used_hint_indices(game: Game, user_id: int) -> list[int]:
+        return game.used_hint_indices.get(user_id, [])
+
+    def _card_description_and_facts(self, payload: str | None) -> tuple[str | None, list[str]]:
+        if not payload:
+            return None, []
+        card = self._labeling_storage.get_card(payload)
+        if card is None:
+            return None, []
+        facts = [fact for fact in (card.facts or []) if isinstance(fact, str) and fact.strip()]
+        return card.description, facts
 
     async def get_round_roles(self, *, chat_id: int, user_id: int) -> dict[str, object]:
         game = await self._require_game(chat_id)
@@ -560,6 +647,8 @@ class GameService:
             pair = provider.get_random_image_pair(normalized_categories or None)
         except ValueError as exc:
             raise MiniAppError(code="testpair_unavailable", message=str(exc), status_code=409) from exc
+        civilian_description, civilian_facts = self._card_description_and_facts(pair.civilian)
+        spy_description, spy_facts = self._card_description_and_facts(pair.spy)
         return {
             "theme": pair.theme,
             "available_categories": available_categories,
@@ -569,11 +658,15 @@ class GameService:
             "civilian_image_url": f"/api/v1/miniapp/cards/{pair.civilian}/image",
             "civilian_wiki_url": pair.civilian_wiki_url,
             "civilian_search_url": build_google_search_url(pair.civilian_name),
+            "civilian_description": civilian_description,
+            "civilian_facts": civilian_facts,
             "spy_id": pair.spy,
             "spy_name": pair.spy_name,
             "spy_image_url": f"/api/v1/miniapp/cards/{pair.spy}/image",
             "spy_wiki_url": pair.spy_wiki_url,
             "spy_search_url": build_google_search_url(pair.spy_name),
+            "spy_description": spy_description,
+            "spy_facts": spy_facts,
         }
 
     def get_card_image(self, card_id: str) -> bytes:

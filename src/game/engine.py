@@ -42,6 +42,7 @@ def prepare_game_round(game: Game, content: ContentProvider) -> Game:
 
     game.state = GameState.PLAYING
     game.votes = {}
+    game.used_hint_indices = {}
     game.round_started_at_ts = time()
     return game
 
